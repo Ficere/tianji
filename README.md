@@ -1,15 +1,17 @@
-# 🏮 Chinese Fortune Skills / 中华命理测算
+# 🔮 天机 / Tianji
 
-一站式命理测算 Agent Skill —— 输入出生日期，自动完成八字五行、袁天罡称骨、紫微斗数、西洋星座分析，多人时自动合盘评分。
+一站式命理测算 Agent Skill —— 输入出生日期，自动完成八字五行、袁天罡称骨、紫微斗数、西洋星座分析；多人时自动合盘评分。
 
-An all-in-one Agent Skill for traditional Chinese fortune analysis. Input birth data, get BaZi (Four Pillars), bone weight fortune, Zi Wei Dou Shu chart, Western zodiac analysis, and multi-person synastry scoring.
+适用于个人、夫妻、家庭、团队、合伙人等任意组合。
+
+An all-in-one Agent Skill for traditional Chinese fortune analysis. Input birth data, get BaZi (Four Pillars), bone weight fortune, Zi Wei Dou Shu chart, Western zodiac analysis, and multi-person synastry scoring — for individuals, couples, families, teams, or any group.
 
 遵循 [Agent Skills 开放标准](https://agentskills.io)，兼容 Claude Code、Cursor、GitHub Copilot、Codex、Windsurf、Gemini CLI、Perplexity Computer 等 30+ AI Agent 平台。
 
 ## 安装 / Install
 
 ```bash
-npx skills add Ficere/fortune-skills
+npx skills add Ficere/tianji
 ```
 
 > 需要 Node.js。安装后 Agent 会自动发现并按需加载该技能。
@@ -22,7 +24,7 @@ npx skills add Ficere/fortune-skills
 **手动安装 / Manual install：**
 
 ```bash
-git clone https://github.com/Ficere/fortune-skills.git
+git clone https://github.com/Ficere/tianji.git
 # 将整个目录复制到你的 Agent 的 skills 目录下即可
 # Copy the directory to your agent's skills folder:
 #   Claude Code:  ~/.claude/skills/
@@ -124,7 +126,7 @@ python scripts/fortune_calc.py --input data.json --output result.json
 ## 目录结构 / Structure
 
 ```
-fortune-skills/
+tianji/
 ├── SKILL.md               # 技能入口（Agent 自动读取）
 ├── scripts/
 │   └── fortune_calc.py    # 计算引擎

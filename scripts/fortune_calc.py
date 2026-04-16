@@ -503,13 +503,13 @@ def analyze_synastry(members_results):
         return {"note": "至少需要2人才能进行合盘分析"}
 
     # 五行合计
-    family_wx = {"金": 0, "木": 0, "水": 0, "火": 0, "土": 0}
+    group_wx = {"金": 0, "木": 0, "水": 0, "火": 0, "土": 0}
     for m in members_results:
-        for w in family_wx:
-            family_wx[w] += m["wx"][w]
+        for w in group_wx:
+            group_wx[w] += m["wx"][w]
 
-    balance = max(family_wx.values()) - min(family_wx.values())
-    missing_family = [k for k, v in family_wx.items() if v == 0]
+    balance = max(group_wx.values()) - min(group_wx.values())
+    missing_group = [k for k, v in group_wx.items() if v == 0]
 
     # 评分
     score = 0
@@ -526,7 +526,7 @@ def analyze_synastry(members_results):
         s = 8
     score += s
     details.append(f"五行平衡度（差异{balance}）+{s}分")
-    if not missing_family:
+    if not missing_group:
         score += 5
         details.append("五行俱全加分 +5分")
 
@@ -622,7 +622,7 @@ def analyze_synastry(members_results):
     else:
         cs = 5
     score += cs
-    details.append(f"家庭平均骨重{avg_weight / 10:.1f}两 +{cs}分")
+    details.append(f"团体平均骨重{avg_weight / 10:.1f}两 +{cs}分")
 
     # 评级
     if score >= 85:
@@ -637,9 +637,9 @@ def analyze_synastry(members_results):
         rating = "★☆☆☆☆ 需多加注意"
 
     return {
-        "family_wx": family_wx,
+        "group_wx": group_wx,
         "balance": balance,
-        "missing_family": missing_family,
+        "missing_group": missing_group,
         "score": score,
         "rating": rating,
         "details": details,
