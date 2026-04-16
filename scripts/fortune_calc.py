@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-综合命理测算计算脚本
-支持：八字五行、袁天罡称骨、紫微排盘概要、西洋星座、多人合盘评分
+天机 · 综合命理测算计算脚本
+支持：八字五行、日柱自主计算、袁天罡称骨、紫微排盘概要、西洋星座、多人合盘评分
 
 用法：
   python fortune_calc.py --input data.json --output result.json
@@ -14,14 +14,15 @@
       "gender": "男",
       "solar_date": "1990-05-20",
       "birth_time": "08:30",
-      "bazi": ["庚午", "辛巳", "甲子", "戊辰"],
+      "bazi": ["庚午", "辛巳", "乙酉", "庚辰"],
       "lunar": {"month": 4, "day": 26}
     }
   ]
 }
 
 说明：
-- bazi 为已验证的四柱八字（年柱、月柱、日柱、时柱），日柱必须通过万年历验证
+- bazi 为四柱八字（年柱、月柱、日柱、时柱）
+- 日柱可由脚本自动计算（基于儒略日算法），也可由调用者预填
 - lunar.month 为农历月份数字（1-12）
 - lunar.day 为农历日期数字（1-30）
 - birth_time 为真太阳时
@@ -84,6 +85,38 @@ LUNAR_DAY_NAME = [
 LUNAR_MONTH_NAME = [
     "", "正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"
 ]
+
+
+# ============================================================
+# 日柱计算（儒略日算法）
+# ============================================================
+
+def gregorian_to_jdn(year, month, day):
+    """格里历日期转儒略日编号 (Julian Day Number)。"""
+    if month <= 2:
+        year -= 1
+        month += 12
+    A = year // 100
+    B = 2 - A + A // 4
+    return int(365.25 * (year + 4716)) + int(30.6001 * (month + 1)) + day + B - 1524
+
+
+def calc_day_pillar(year, month, day):
+    """
+    根据公历日期计算日柱天干地支。
+
+    原理：干支纪日是连续的60周期循环。利用儒略日编号 (JDN) 与已知
+    基准日的差值推算任意日期的干支。
+    基准：2000-01-01 = JDN 2451545 = 戊午日
+    """
+    jdn = gregorian_to_jdn(year, month, day)
+    base_jdn = 2451545  # 2000-01-01
+    base_gan = 4        # 戊 = TIAN_GAN[4]
+    base_zhi = 6        # 午 = DI_ZHI[6]
+    diff = jdn - base_jdn
+    gan_idx = (base_gan + diff) % 10
+    zhi_idx = (base_zhi + diff) % 12
+    return TIAN_GAN[gan_idx] + DI_ZHI[zhi_idx]
 
 
 # ============================================================
@@ -407,7 +440,7 @@ def analyze_person(member):
     gender = member["gender"]
     solar_date = member["solar_date"]
     birth_time = member["birth_time"]
-    bazi = member["bazi"]
+    bazi = list(member["bazi"])  # 复制一份以免修改原始数据
     lunar = member["lunar"]
     lunar_month = lunar["month"]
     lunar_day = lunar["day"]
@@ -415,6 +448,14 @@ def analyze_person(member):
     # 解析时间
     parts = birth_time.split(":")
     hour_float = int(parts[0]) + int(parts[1]) / 60.0
+
+    # 日柱自动计算/校验
+    solar_parts = solar_date.split("-")
+    s_year, s_month, s_day = int(solar_parts[0]), int(solar_parts[1]), int(solar_parts[2])
+    computed_day = calc_day_pillar(s_year, s_month, s_day)
+    if bazi[2] != computed_day:
+        print(f"⚠️ {name}: 输入日柱「{bazi[2]}」与计算结果「{computed_day}」不一致，已自动修正")
+        bazi[2] = computed_day
 
     # 基本信息
     year_gz = bazi[0]

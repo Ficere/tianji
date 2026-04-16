@@ -104,7 +104,7 @@ python scripts/fortune_calc.py --input data.json --output result.json
       "gender": "男",
       "solar_date": "1990-05-20",
       "birth_time": "08:30",
-      "bazi": ["庚午", "辛巳", "甲子", "戊辰"],
+      "bazi": ["庚午", "辛巳", "乙酉", "庚辰"],
       "lunar": {"month": 4, "day": 26}
     },
     {
@@ -112,7 +112,7 @@ python scripts/fortune_calc.py --input data.json --output result.json
       "gender": "女",
       "solar_date": "1992-08-15",
       "birth_time": "14:00",
-      "bazi": ["壬申", "戊申", "丙寅", "乙未"],
+      "bazi": ["壬申", "戊申", "癸亥", "乙未"],
       "lunar": {"month": 7, "day": 17}
     }
   ]
