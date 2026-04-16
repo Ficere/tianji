@@ -8,6 +8,8 @@ An all-in-one Agent Skill for traditional Chinese fortune analysis. Input birth 
 
 遵循 [Agent Skills 开放标准](https://agentskills.io)，兼容 Claude Code、Cursor、GitHub Copilot、Codex、Windsurf、Gemini CLI、Perplexity Computer 等 30+ AI Agent 平台。
 
+已经上架 coze 技能商店，欢迎大家支持！[点这里跳转](https://www.coze.cn/skills?skill_share_pid=7629277828386947078)
+
 ## 安装 / Install
 
 ```bash
