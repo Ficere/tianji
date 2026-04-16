@@ -75,15 +75,16 @@ metadata:
 | 子（冬月）| 大雪 | 12月7日 |
 | 丑（腊月）| 小寒 | 1月6日 |
 
-**日柱**：必须通过万年历或在线排盘工具验证（如 buyiju.com），日柱计算极为复杂不可手算。
+**日柱**：由 `scripts/fortune_calc.py` 中的 `calc_day_pillar()` 函数自动计算（基于儒略日编号算法，无需第三方服务）。输入公历日期即可得到精确日柱。
 
 **时柱**：
 - 地支由时辰决定（子时23-01，丑时01-03 ... 亥时21-23）
 - 天干由五鼠遁推算：甲己加甲、乙庚丙作初、丙辛戊起、丁壬庚子居、戊癸壬子头
 
-#### 2.3 关键验证
+#### 2.3 日柱自动计算
 
-**日柱必须验证**。建议使用浏览器访问 https://www.buyiju.com/bazi/ 或其他可靠排盘网站交叉校验四柱。
+脚本会自动根据公历日期计算日柱，并与输入的八字进行校验。若不一致会自动修正并提示。
+算法原理：干支纪日为连续60周期循环，通过儒略日编号 (JDN) 与已知基准日（2000-01-01 = 戊午日）的差值推算。
 
 ### 第三步：运行计算脚本
 
@@ -102,7 +103,7 @@ python scripts/fortune_calc.py --input data.json --output result.json
       "gender": "男",
       "solar_date": "1990-05-20",
       "birth_time": "08:30",
-      "bazi": ["庚午", "辛巳", "甲子", "戊辰"],
+      "bazi": ["庚午", "辛巳", "乙酉", "庚辰"],
       "lunar": {"month": 4, "day": 26}
     },
     {
@@ -110,7 +111,7 @@ python scripts/fortune_calc.py --input data.json --output result.json
       "gender": "女",
       "solar_date": "1992-08-15",
       "birth_time": "14:00",
-      "bazi": ["壬申", "戊申", "丙寅", "乙未"],
+      "bazi": ["壬申", "戊申", "癸亥", "乙未"],
       "lunar": {"month": 7, "day": 17}
     }
   ]
@@ -242,7 +243,7 @@ python scripts/fortune_calc.py --input data.json --output result.json
 
 ## Important Notes
 
-- 日柱不可手算，必须通过在线工具验证
+- 日柱由脚本内置的 `calc_day_pillar()` 自动计算，无需第三方服务
 - 年份以**立春**为界（非春节），月份以**节气**为界（非农历初一）
 - 真太阳时与北京时间可能有差异，尤其西部地区
 - 紫微排盘此处仅为概要，完整排盘需专业软件
