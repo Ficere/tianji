@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 天机 · 综合命理测算计算脚本
-支持：八字五行、日柱自主计算、袁天罡称骨、紫微排盘概要、西洋星座、多人合盘评分
+支持：八字五行、日柱自主计算、袁天罡称骨、紫微排盘概要、西洋星座、三才五格姓名测算、多人合盘评分
 
 用法：
   python fortune_calc.py --input data.json --output result.json
@@ -15,7 +15,8 @@
       "solar_date": "1990-05-20",
       "birth_time": "08:30",
       "bazi": ["庚午", "辛巳", "乙酉", "庚辰"],
-      "lunar": {"month": 4, "day": 26}
+      "lunar": {"month": 4, "day": 26},
+      "surname_len": 1
     }
   ]
 }
@@ -26,6 +27,7 @@
 - lunar.month 为农历月份数字（1-12）
 - lunar.day 为农历日期数字（1-30）
 - birth_time 为真太阳时
+- surname_len 为姓氏字数（默认1，复姓填2），用于三才五格计算
 """
 
 import json
@@ -507,6 +509,21 @@ def analyze_person(member):
     # 紫微
     ziwei = calc_ziwei(year_gz[0], year_gz[1], lunar_month, lunar_day, hour_float, gender)
 
+    # 三才五格姓名测算
+    wuge_result = None
+    surname_len = member.get("surname_len", 1)
+    try:
+        from name_wuge_calc import calc_wuge
+        wuge_result = calc_wuge(name, surname_len)
+        if "error" in wuge_result:
+            print(f"⚠️ {name}: 三才五格计算失败 - {wuge_result['error']}")
+            wuge_result = None
+    except ImportError:
+        # name_wuge_calc 不可用时跳过
+        pass
+    except Exception as e:
+        print(f"⚠️ {name}: 三才五格计算异常 - {e}")
+
     return {
         "name": name,
         "gender": gender,
@@ -532,6 +549,7 @@ def analyze_person(member):
         "zodiac": zodiac,
         "zodiac_info": zodiac_info,
         "ziwei": ziwei,
+        "wuge": wuge_result,
     }
 
 
