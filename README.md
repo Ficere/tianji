@@ -68,12 +68,16 @@ git clone https://github.com/Ficere/tianji.git
 
 | 模块 | 说明 |
 |------|------|
-| **八字五行** | 四柱排盘、五行分布、十神、纳音、藏干、日主旺衰 |
+| **八字五行** | 四柱全自动计算（天文算法精确节气）、五行分布、十神、纳音、藏干、日主旺衰 |
 | **袁天罡称骨** | 年月日时骨重查表、52 首歌诀、等级评定 |
 | **紫微斗数** | 命宫/身宫、十二宫、五行局、命主/身主、大运方向 |
 | **西洋星座** | 太阳星座、元素守护星、两人相位匹配 |
 | **三才五格** | 康熙字典笔画（48700+ 字）、天格/人格/地格/外格/总格、81 数理吉凶、三才生克配置、综合评分 |
 | **合盘评分** | 五行互补 + 生肖关系 + 星座 + 日主生克 + 称骨 + 姓名合盘，100 分制综合评定 |
+
+> **v4.0 新特性**：四柱八字现在完全由脚本自动计算，无需手动排盘。年柱基于立春精确时刻（Meeus VSOP87 太阳黄经算法），月柱基于 12 个月建节气的精确时刻，日柱基于儒略日编号，时柱基于五鼠遁。已经过多组边界用例交叉校验。
+>
+> **v4.0 New**: Four pillars are now fully auto-calculated. Year pillar uses precise Lichun timing (Meeus VSOP87), month pillar uses exact Jieqi moments, day pillar uses JDN, hour pillar uses Wushu Dun. Cross-verified against reference sites.
 
 <details>
 <summary>合盘评分细则 / Scoring breakdown</summary>
@@ -137,7 +141,6 @@ python scripts/name_wuge_calc.py --input names.json --output result.json
       "gender": "男",
       "solar_date": "1990-05-20",
       "birth_time": "08:30",
-      "bazi": ["庚午", "辛巳", "乙酉", "庚辰"],
       "lunar": {"month": 4, "day": 26},
       "surname_len": 1
     },
@@ -146,7 +149,6 @@ python scripts/name_wuge_calc.py --input names.json --output result.json
       "gender": "女",
       "solar_date": "1992-08-15",
       "birth_time": "14:00",
-      "bazi": ["壬申", "戊申", "癸亥", "乙未"],
       "lunar": {"month": 7, "day": 17},
       "surname_len": 1
     }
@@ -154,7 +156,7 @@ python scripts/name_wuge_calc.py --input names.json --output result.json
 }
 ```
 
-> ⚠️ `bazi` 中的日柱必须通过万年历验证，不可手算。`surname_len` 用于三才五格计算（1=单姓，2=复姓）。
+> `bazi` 字段可省略，脚本基于天文算法自动计算完整四柱。若提供了 bazi，脚本会自动校验并修正。`surname_len` 用于三才五格计算（1=单姓，2=复姓）。
 
 </details>
 

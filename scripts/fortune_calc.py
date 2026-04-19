@@ -33,6 +33,7 @@
 import json
 import sys
 import argparse
+import math
 
 # ============================================================
 # 基础数据
@@ -90,7 +91,7 @@ LUNAR_MONTH_NAME = [
 
 
 # ============================================================
-# 日柱计算（儒略日算法）
+# 儒略日与日期转换
 # ============================================================
 
 def gregorian_to_jdn(year, month, day):
@@ -102,6 +103,265 @@ def gregorian_to_jdn(year, month, day):
     B = 2 - A + A // 4
     return int(365.25 * (year + 4716)) + int(30.6001 * (month + 1)) + day + B - 1524
 
+
+def gregorian_to_jd(year, month, day, hour=0, minute=0):
+    """公历日期时间转儒略日（浮点数）。"""
+    y, m = year, month
+    if m <= 2:
+        y -= 1
+        m += 12
+    A = y // 100
+    B = 2 - A + A // 4
+    jd = int(365.25 * (y + 4716)) + int(30.6001 * (m + 1)) + day + B - 1524.5
+    jd += (hour + minute / 60.0) / 24.0
+    return jd
+
+
+# ============================================================
+# 太阳黄经与节气计算
+# ============================================================
+
+def _solar_longitude(jde):
+    """
+    计算给定儒略日(力学时)的太阳视黄经（简化VSOP87）。
+    参考：Jean Meeus《天文算法》第25章
+    精度约0.01度，节气时刻误差 < 10分钟。
+    """
+    T = (jde - 2451545.0) / 36525.0
+    L0 = (280.46646 + 36000.76983 * T + 0.0003032 * T * T) % 360
+    M = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) % 360
+    M_rad = math.radians(M)
+    C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * math.sin(M_rad) \
+      + (0.019993 - 0.000101 * T) * math.sin(2 * M_rad) \
+      + 0.000289 * math.sin(3 * M_rad)
+    sun_lon = L0 + C
+    omega = 125.04 - 1934.136 * T
+    sun_lon = sun_lon - 0.00569 - 0.00478 * math.sin(math.radians(omega))
+    return sun_lon % 360
+
+
+# 节气对应太阳黄经度数 → 大致公历(月, 日)
+_JIEQI_APPROX = {
+    285: (1, 6), 300: (1, 20), 315: (2, 4), 330: (2, 19),
+    345: (3, 6), 0: (3, 21), 15: (4, 5), 30: (4, 20),
+    45: (5, 6), 60: (5, 21), 75: (6, 6), 90: (6, 21),
+    105: (7, 7), 120: (7, 23), 135: (8, 7), 150: (8, 23),
+    165: (9, 8), 180: (9, 23), 195: (10, 8), 210: (10, 23),
+    225: (11, 7), 240: (11, 22), 255: (12, 7), 270: (12, 22),
+}
+
+
+def _find_solar_term_jde(year, target_lon):
+    """
+    精确计算指定年份太阳黄经到达target_lon的时刻(JDE)。
+    使用牛顿迭代法，初始估算基于节气的近似公历日期。
+    """
+    m, d = _JIEQI_APPROX.get(target_lon, (3, 21))
+    jde_est = gregorian_to_jd(year, m, d, 12, 0)
+    for _ in range(50):
+        lon = _solar_longitude(jde_est)
+        diff = target_lon - lon
+        if diff > 180:
+            diff -= 360
+        elif diff < -180:
+            diff += 360
+        if abs(diff) < 0.00001:
+            break
+        jde_est += diff / 360.0 * 365.25
+    return jde_est
+
+
+def _jde_to_beijing(jde):
+    """JDE(≈UT) 转北京时间 (year, month, day, hour, minute)。"""
+    jd_bj = jde + 8.0 / 24.0
+    z = jd_bj + 0.5
+    Z = int(z)
+    F = z - Z
+    if Z < 2299161:
+        A = Z
+    else:
+        alpha = int((Z - 1867216.25) / 36524.25)
+        A = Z + 1 + alpha - alpha // 4
+    B = A + 1524
+    C = int((B - 122.1) / 365.25)
+    D = int(365.25 * C)
+    E = int((B - D) / 30.6001)
+    day = B - D - int(30.6001 * E)
+    month = E - 1 if E < 14 else E - 13
+    year = C - 4716 if month > 2 else C - 4715
+    hf = F * 24.0
+    hour = int(hf)
+    minute = int((hf - hour) * 60)
+    return year, month, day, hour, minute
+
+
+# 月建节气表：(节气名, 太阳黄经, 月支index in DI_ZHI)
+_MONTH_JIEQI = [
+    ("小寒", 285, 1),   # 丑月
+    ("立春", 315, 2),   # 寅月
+    ("惊蛰", 345, 3),   # 卯月
+    ("清明", 15, 4),    # 辰月
+    ("立夏", 45, 5),    # 巳月
+    ("芒种", 75, 6),    # 午月
+    ("小暑", 105, 7),   # 未月
+    ("立秋", 135, 8),   # 申月
+    ("白露", 165, 9),   # 酉月
+    ("寒露", 195, 10),  # 戌月
+    ("立冬", 225, 11),  # 亥月
+    ("大雪", 255, 0),   # 子月
+]
+
+
+def _get_month_jieqi_dates(year):
+    """
+    获取覆盖指定公历年份的所有月建节气时刻（北京时间）。
+    返回按时间排序的列表: [(solar_year, month, day, hour, minute, zhi_index, jieqi_name), ...]
+    包含前一年12月的大雪、当年1月的小寒，以及当年所有节气直到下一年小寒。
+    """
+    results = []
+    # 上一年大雪
+    jde = _find_solar_term_jde(year - 1, 255)
+    dt = _jde_to_beijing(jde)
+    results.append((*dt, 0, "大雪"))
+    # 当年小寒
+    jde = _find_solar_term_jde(year, 285)
+    dt = _jde_to_beijing(jde)
+    results.append((*dt, 1, "小寒"))
+    # 当年立春到大雪
+    for name, lon, zhi_idx in _MONTH_JIEQI:
+        if name in ("小寒",):
+            continue
+        jde = _find_solar_term_jde(year, lon)
+        dt = _jde_to_beijing(jde)
+        results.append((*dt, zhi_idx, name))
+    # 下一年小寒
+    jde = _find_solar_term_jde(year + 1, 285)
+    dt = _jde_to_beijing(jde)
+    results.append((*dt, 1, "小寒"))
+    results.sort(key=lambda x: (x[0], x[1], x[2], x[3], x[4]))
+    return results
+
+
+# ============================================================
+# 年柱计算
+# ============================================================
+
+def calc_year_pillar(year, month, day, hour=0, minute=0):
+    """
+    根据公历日期时间计算年柱天干地支。
+    以立春为年的分界：立春前属上一年，立春后（含）属当年。
+    hour/minute 为北京时间。
+    """
+    # 计算当年立春时刻（北京时间）
+    jde = _find_solar_term_jde(year, 315)
+    lc_y, lc_m, lc_d, lc_h, lc_mi = _jde_to_beijing(jde)
+    
+    # 比较出生时间与立春时间
+    birth_val = (month, day, hour, minute)
+    lichun_val = (lc_m, lc_d, lc_h, lc_mi)
+    
+    if birth_val < lichun_val:
+        gz_year = year - 1  # 立春前，属上一年
+    else:
+        gz_year = year
+    
+    gan_idx = (gz_year - 4) % 10
+    zhi_idx = (gz_year - 4) % 12
+    return TIAN_GAN[gan_idx] + DI_ZHI[zhi_idx]
+
+
+# ============================================================
+# 月柱计算
+# ============================================================
+
+# 五虎遁口诀：年干 → 寅月天干
+_WUHU_DUN = {
+    "甲": "丙", "己": "丙",  # 甲己之年丙作首
+    "乙": "戊", "庚": "戊",  # 乙庚之年戊为头
+    "丙": "庚", "辛": "庚",  # 丙辛之岁寻庚上
+    "丁": "壬", "壬": "壬",  # 丁壬壬寅顺水流
+    "戊": "甲", "癸": "甲",  # 戊癸之年甲寅头
+}
+
+
+def calc_month_pillar(year, month, day, hour=0, minute=0):
+    """
+    根据公历日期时间计算月柱天干地支。
+    月支由节气决定（每月以节气为界，非公历月初）。
+    月干由五虎遁推算。
+    hour/minute 为北京时间。
+    """
+    # 获取覆盖该年的节气日期表
+    jieqi_dates = _get_month_jieqi_dates(year)
+    
+    # 将出生时间与节气时间逐一比较，找到所属月建
+    birth_val = (year, month, day, hour, minute)
+    
+    zhi_idx = None
+    for i in range(len(jieqi_dates) - 1):
+        cur = jieqi_dates[i]
+        nxt = jieqi_dates[i + 1]
+        cur_val = (cur[0], cur[1], cur[2], cur[3], cur[4])
+        nxt_val = (nxt[0], nxt[1], nxt[2], nxt[3], nxt[4])
+        if cur_val <= birth_val < nxt_val:
+            zhi_idx = cur[5]
+            break
+    
+    if zhi_idx is None:
+        # 回退：如果在所有区间之外，使用最后一个区间
+        zhi_idx = jieqi_dates[-1][5]
+    
+    month_zhi = DI_ZHI[zhi_idx]
+    
+    # 确定年干（需要考虑立春分界）
+    year_gz = calc_year_pillar(year, month, day, hour, minute)
+    year_gan = year_gz[0]
+    
+    # 五虎遁推月干：从年干查寅月起始天干，然后顺推
+    yin_gan = _WUHU_DUN[year_gan]
+    yin_gan_idx = TIAN_GAN.index(yin_gan)
+    # 寅=2，月支zhi_idx相对于寅的偏移
+    offset = (zhi_idx - 2) % 12
+    month_gan_idx = (yin_gan_idx + offset) % 10
+    month_gan = TIAN_GAN[month_gan_idx]
+    
+    return month_gan + month_zhi
+
+
+# ============================================================
+# 时柱计算
+# ============================================================
+
+# 五鼠遁口诀：日干 → 子时天干
+_WUSHU_DUN = {
+    "甲": "甲", "己": "甲",  # 甲己还加甲
+    "乙": "丙", "庚": "丙",  # 乙庚丙作初
+    "丙": "戊", "辛": "戊",  # 丙辛从戊起
+    "丁": "庚", "壬": "庚",  # 丁壬庚子居
+    "戊": "壬", "癸": "壬",  # 戊癸壬子头
+}
+
+
+def calc_hour_pillar(day_gan, hour_float):
+    """
+    根据日干和出生时间（小时数）计算时柱。
+    hour_float: 0-24 的浮点数。
+    """
+    shichen_idx = get_shichen(hour_float)
+    hour_zhi = DI_ZHI[shichen_idx]
+    
+    # 五鼠遁推时干
+    zi_gan = _WUSHU_DUN[day_gan]
+    zi_gan_idx = TIAN_GAN.index(zi_gan)
+    hour_gan_idx = (zi_gan_idx + shichen_idx) % 10
+    hour_gan = TIAN_GAN[hour_gan_idx]
+    
+    return hour_gan + hour_zhi
+
+
+# ============================================================
+# 日柱计算（儒略日算法）
+# ============================================================
 
 def calc_day_pillar(year, month, day):
     """
@@ -119,6 +379,26 @@ def calc_day_pillar(year, month, day):
     gan_idx = (base_gan + diff) % 10
     zhi_idx = (base_zhi + diff) % 12
     return TIAN_GAN[gan_idx] + DI_ZHI[zhi_idx]
+
+
+def calc_four_pillars(year, month, day, hour=0, minute=0):
+    """
+    一次性计算完整四柱八字。
+    参数为公历日期+北京时间。
+    返回 [年柱, 月柱, 日柱, 时柱] 列表。
+    
+    子时处理说明：
+    采用“晚子时不换日柱”派（23:00-00:00 仍用当日日柱）。
+    这是目前主流命理网站和大多数命理实践采用的方式。
+    """
+    hour_float = hour + minute / 60.0
+    
+    year_pillar = calc_year_pillar(year, month, day, hour, minute)
+    month_pillar = calc_month_pillar(year, month, day, hour, minute)
+    day_pillar = calc_day_pillar(year, month, day)
+    hour_pillar = calc_hour_pillar(day_pillar[0], hour_float)
+    
+    return [year_pillar, month_pillar, day_pillar, hour_pillar]
 
 
 # ============================================================
@@ -442,7 +722,7 @@ def analyze_person(member):
     gender = member["gender"]
     solar_date = member["solar_date"]
     birth_time = member["birth_time"]
-    bazi = list(member["bazi"])  # 复制一份以免修改原始数据
+    bazi = list(member["bazi"]) if member.get("bazi") else [None, None, None, None]
     lunar = member["lunar"]
     lunar_month = lunar["month"]
     lunar_day = lunar["day"]
@@ -450,14 +730,24 @@ def analyze_person(member):
     # 解析时间
     parts = birth_time.split(":")
     hour_float = int(parts[0]) + int(parts[1]) / 60.0
+    s_hour = int(parts[0])
+    s_minute = int(parts[1])
 
-    # 日柱自动计算/校验
+    # 解析日期
     solar_parts = solar_date.split("-")
     s_year, s_month, s_day = int(solar_parts[0]), int(solar_parts[1]), int(solar_parts[2])
-    computed_day = calc_day_pillar(s_year, s_month, s_day)
-    if bazi[2] != computed_day:
-        print(f"⚠️ {name}: 输入日柱「{bazi[2]}」与计算结果「{computed_day}」不一致，已自动修正")
-        bazi[2] = computed_day
+
+    # 自动计算完整四柱（基于天文算法）
+    computed = calc_four_pillars(s_year, s_month, s_day, s_hour, s_minute)
+
+    # 与输入的bazi进行校验，自动修正差异
+    pillar_names = ["年柱", "月柱", "日柱", "时柱"]
+    for i in range(4):
+        if bazi[i] is None:
+            bazi[i] = computed[i]
+        elif bazi[i] != computed[i]:
+            print(f"⚠️ {name}: 输入{pillar_names[i]}「{bazi[i]}」与计算结果「{computed[i]}」不一致，已自动修正")
+            bazi[i] = computed[i]
 
     # 基本信息
     year_gz = bazi[0]
