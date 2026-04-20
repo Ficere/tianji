@@ -72,12 +72,16 @@ git clone https://github.com/Ficere/tianji.git
 | **袁天罡称骨** | 年月日时骨重查表、52 首歌诀、等级评定 |
 | **紫微斗数** | 命宫/身宫、十二宫、五行局、命主/身主、大运方向 |
 | **西洋星座** | 太阳星座、元素守护星、两人相位匹配 |
-| **三才五格** | 康熙字典笔画（48700+ 字）、天格/人格/地格/外格/总格、81 数理吉凶、三才生克配置、综合评分 |
+| **三才五格** | 康熙字典笔画（48700+ 字）、天格/人格/地格/外格/总格、81 数理吉凶、三才生克配置、综合评分与评级 |
 | **合盘评分** | 五行互补 + 生肖关系 + 星座 + 日主生克 + 称骨 + 姓名合盘，100 分制综合评定 |
 
 > **v4.0 新特性**：四柱八字现在完全由脚本自动计算，无需手动排盘。年柱基于立春精确时刻（Meeus VSOP87 太阳黄经算法），月柱基于 12 个月建节气的精确时刻，日柱基于儒略日编号，时柱基于五鼠遁。已经过多组边界用例交叉校验。
 >
 > **v4.0 New**: Four pillars are now fully auto-calculated. Year pillar uses precise Lichun timing (Meeus VSOP87), month pillar uses exact Jieqi moments, day pillar uses JDN, hour pillar uses Wushu Dun. Cross-verified against reference sites.
+
+> **v4.1 修复**：三才五格新增「综合评级」，与「三才评级」明确区分。详见下方说明。
+>
+> **v4.1 Fix**: Added "Overall Rating" for name numerology, clearly separated from "Sancai Rating". See details below.
 
 <details>
 <summary>合盘评分细则 / Scoring breakdown</summary>
@@ -112,6 +116,32 @@ git clone https://github.com/Ficere/tianji.git
 **81 数理：** 超过 81 减去 80 后查吉凶表
 
 **笔画标准：** 康熙字典（非现代简体），内置 48700+ 字查找表
+
+---
+
+**⚠️ 三才评级 vs 综合评级（v4.1）**
+
+姓名测算输出包含两个独立的评级，请注意区分：
+
+| 评级 | 含义 | 示例 |
+|------|------|------|
+| **三才评级** | 仅评价三才配置（天格·人格·地格的五行生克关系） | "金金金" → 三才评级「大吉」 |
+| **综合评级** | 基于五格数理吉凶 + 三才配置的加权综合评分 | 综合 66 分 → 综合评级「平·中等」 |
+
+一个姓名可能三才配置极佳（如三才同属，评级「大吉」），但五格数理偏弱（如多为「半吉」），导致综合评分不高。反之，五格数理全为「大吉」的姓名即使三才仅为「吉」，综合评分仍可达 95+。
+
+**综合评级标准 / Overall Rating Scale：**
+
+| 综合评分 | 综合评级 | Score | Overall Rating |
+|----------|----------|-------|----------------|
+| ≥ 90 | 大吉 · 上上等 | ≥ 90 | Excellent |
+| ≥ 80 | 吉 · 上等 | ≥ 80 | Good |
+| ≥ 70 | 半吉 · 中上 | ≥ 70 | Above Average |
+| ≥ 60 | 平 · 中等 | ≥ 60 | Average |
+| ≥ 50 | 偏弱 · 中下 | ≥ 50 | Below Average |
+| < 50 | 凶 · 下等 | < 50 | Poor |
+
+**综合评分权重 / Score Weights：** 人格 35% + 地格 20% + 总格 20% + 三才 15% + 天格 5% + 外格 5%
 
 </details>
 
