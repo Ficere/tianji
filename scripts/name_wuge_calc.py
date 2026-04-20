@@ -320,6 +320,7 @@ def calc_wuge(name, surname_len=1):
 
     # 综合评分 (100分制)
     score = calc_score(wuge, sancai_analysis)
+    rating = score_to_rating(score)
 
     return {
         "姓名": name,
@@ -334,6 +335,7 @@ def calc_wuge(name, surname_len=1):
             "分析": sancai_analysis,
         },
         "综合评分": score,
+        "综合评级": rating,
     }
 
 
@@ -448,18 +450,48 @@ def jixiong_score(jx):
 
 
 def calc_score(wuge, sancai_analysis):
-    """加权综合评分，满分100。"""
+    """加权综合评分，满分100。
+
+    修复说明（v4.1）：
+    三才分数直接使用其内部原始得分（0-30）归一化到 0-100，
+    而非通过评级标签（大吉/吉/半吉…）再反查分数。
+    旧逻辑会导致三才"大吉"=100 与五格全"半吉"=60 严重脱节，
+    出现"大吉"却只有66分的反直觉结果。
+    """
     # 权重：天格5%、人格35%、地格20%、总格20%、外格5%、三才15%
     tian_s = jixiong_score(wuge["天格"]["吉凶"])
     ren_s = jixiong_score(wuge["人格"]["吉凶"])
     di_s = jixiong_score(wuge["地格"]["吉凶"])
     zong_s = jixiong_score(wuge["总格"]["吉凶"])
     wai_s = jixiong_score(wuge["外格"]["吉凶"])
-    sancai_s = jixiong_score(sancai_analysis["评级"])
+
+    # 三才：用原始得分（满分30）归一化到0-100，不再经过标签转换
+    sancai_raw = sancai_analysis.get("得分", 0)
+    sancai_s = round(sancai_raw / 30.0 * 100, 1)
 
     score = (tian_s * 0.05 + ren_s * 0.35 + di_s * 0.20 +
              zong_s * 0.20 + wai_s * 0.05 + sancai_s * 0.15)
     return round(score, 1)
+
+
+def score_to_rating(score):
+    """根据综合评分输出总体评级。
+
+    用于姓名综合评分的最终展示，避免“三才大吉”与“总分66分”的认知矛盾。
+    三才评级仅反映三才配置本身的优劣，此评级反映姓名整体质量。
+    """
+    if score >= 90:
+        return "大吉 · 上上等"
+    elif score >= 80:
+        return "吉 · 上等"
+    elif score >= 70:
+        return "半吉 · 中上"
+    elif score >= 60:
+        return "平 · 中等"
+    elif score >= 50:
+        return "偏弱 · 中下"
+    else:
+        return "凶 · 下等"
 
 
 # ============================================================
