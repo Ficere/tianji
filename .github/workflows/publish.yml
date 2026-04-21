@@ -1,0 +1,249 @@
+name: Publish to Registries
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "逗号分隔的目标平台 (clawhub,smithery,agentskill,skills,skillhub)，留空则发布全部"
+        required: false
+        default: ""
+
+env:
+  SKILL_NAME: tianji
+
+jobs:
+  # ------------------------------------------------------------------
+  # 预处理：打包 skill 为 zip，供 ClawHub / SkillHub 等 CLI 使用
+  # ------------------------------------------------------------------
+  package:
+    name: Package Skill Bundle
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag or SKILL.md
+        id: meta
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION=$(python -c "import re,yaml; t=open('SKILL.md').read(); m=re.match(r'^---\n(.*?)\n---',t,re.S); print(yaml.safe_load(m.group(1)).get('metadata',{}).get('version','0.0.0'))")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION"
+
+      - name: Build zip bundle
+        run: |
+          mkdir -p dist
+          zip -r "dist/${SKILL_NAME}-${{ steps.meta.outputs.version }}.zip" . \
+            -x '.git/*' '.github/*' 'dist/*' '*.pyc' '__pycache__/*' 'tests/*'
+          ls -lh dist/
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-bundle
+          path: dist/*.zip
+          retention-days: 30
+
+  # ------------------------------------------------------------------
+  # ClawHub (OpenClaw 官方注册表) - CLI 发布
+  # ------------------------------------------------------------------
+  clawhub:
+    name: Publish → ClawHub
+    needs: package
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.targets == '' || contains(github.event.inputs.targets, 'clawhub') }}
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: skill-bundle
+          path: dist
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install ClawHub CLI
+        run: npm install -g clawhub@latest
+
+      - name: Publish to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          if [ -z "$CLAWHUB_TOKEN" ]; then
+            echo "⚠️  CLAWHUB_TOKEN 未设置，跳过发布"
+            exit 0
+          fi
+          VERSION="${{ needs.package.outputs.version }}"
+          ZIP=$(ls dist/*.zip | head -1)
+          clawhub publish "$ZIP" \
+            -n "${SKILL_NAME}" \
+            -v "$VERSION" \
+            -t "$CLAWHUB_TOKEN" \
+            --changelog "Release v$VERSION"
+
+  # ------------------------------------------------------------------
+  # SkillHub (腾讯镜像) - 复用 clawhub CLI，指向不同 registry
+  # ------------------------------------------------------------------
+  skillhub:
+    name: Publish → SkillHub (腾讯)
+    needs: package
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.targets == '' || contains(github.event.inputs.targets, 'skillhub') }}
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: skill-bundle
+          path: dist
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install ClawHub CLI (SkillHub uses same CLI)
+        run: npm install -g clawhub@latest
+
+      - name: Publish to SkillHub
+        env:
+          SKILLHUB_TOKEN: ${{ secrets.SKILLHUB_TOKEN }}
+          SKILLHUB_REGISTRY: ${{ secrets.SKILLHUB_REGISTRY || 'https://skillhub.cloud.tencent.com' }}
+        run: |
+          if [ -z "$SKILLHUB_TOKEN" ]; then
+            echo "⚠️  SKILLHUB_TOKEN 未设置，跳过发布"
+            exit 0
+          fi
+          VERSION="${{ needs.package.outputs.version }}"
+          ZIP=$(ls dist/*.zip | head -1)
+          CLAWHUB_REGISTRY="$SKILLHUB_REGISTRY" clawhub publish "$ZIP" \
+            -n "${SKILL_NAME}" \
+            -v "$VERSION" \
+            -t "$SKILLHUB_TOKEN" \
+            --changelog "Release v$VERSION"
+
+  # ------------------------------------------------------------------
+  # agentskill.sh - 通过 GitHub webhook 触发（优先）
+  #   or 主动 POST 触发索引刷新
+  # ------------------------------------------------------------------
+  agentskill:
+    name: Notify → agentskill.sh
+    needs: package
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.targets == '' || contains(github.event.inputs.targets, 'agentskill') }}
+    continue-on-error: true
+    steps:
+      - name: Trigger re-index via webhook
+        run: |
+          # agentskill.sh 每 24h 自动同步；若已配置 webhook 会即时同步
+          # 此处主动触发一次，确保 release 立即可见
+          REPO="${{ github.repository }}"
+          TAG="${{ github.ref_name }}"
+          echo "📤 通知 agentskill.sh 有新 release: $REPO@$TAG"
+          curl -fsSL -X POST https://agentskill.sh/api/webhooks/github \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: push" \
+            -d "{\"repository\":{\"full_name\":\"$REPO\",\"html_url\":\"https://github.com/$REPO\"},\"ref\":\"refs/tags/$TAG\"}" \
+            || echo "⚠️  webhook 调用失败（非关键，24h 内会自动同步）"
+
+  # ------------------------------------------------------------------
+  # skills.sh - 完全依赖 telemetry，无发布 API；此 job 仅做记录
+  # ------------------------------------------------------------------
+  skills-sh:
+    name: Record → skills.sh
+    needs: package
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.targets == '' || contains(github.event.inputs.targets, 'skills') }}
+    steps:
+      - name: Note
+        run: |
+          echo "ℹ️  skills.sh 通过 'npx skills add Ficere/tianji' 的遥测自动索引"
+          echo "ℹ️  无需主动发布；首个用户安装后将出现在目录中"
+          echo "🔗 https://skills.sh/Ficere/${SKILL_NAME}"
+
+  # ------------------------------------------------------------------
+  # Smithery - 通过 GitHub 集成自动绑定仓库，无需 CLI 发布
+  # ------------------------------------------------------------------
+  smithery:
+    name: Record → Smithery
+    needs: package
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.targets == '' || contains(github.event.inputs.targets, 'smithery') }}
+    steps:
+      - name: Note
+        run: |
+          echo "ℹ️  Smithery 通过一次性 Web UI 绑定 GitHub 仓库，push 时自动构建"
+          echo "ℹ️  首次设置：访问 https://smithery.ai → Add server → 选择 Ficere/tianji"
+          echo "🔗 https://smithery.ai/server/Ficere/${SKILL_NAME}"
+
+  # ------------------------------------------------------------------
+  # 创建 GitHub Release（附带 zip 包）
+  # ------------------------------------------------------------------
+  github-release:
+    name: Create GitHub Release
+    needs: [package, clawhub, skillhub, agentskill]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: skill-bundle
+          path: dist
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
+          body: |
+            ## 🔮 天机 / Tianji v${{ needs.package.outputs.version }}
+
+            一站式命理测算 Agent Skill。
+
+            ### 安装 / Install
+
+            ```bash
+            # npx skills
+            npx skills add Ficere/tianji@v${{ needs.package.outputs.version }}
+
+            # gh skill
+            gh skill install Ficere/tianji@v${{ needs.package.outputs.version }}
+
+            # ClawHub
+            clawhub install tianji
+
+            # Coze 技能商店
+            # https://www.coze.cn/skills?skill_share_pid=7629277828386947078
+            ```
+
+  # ------------------------------------------------------------------
+  # 发布结果汇总
+  # ------------------------------------------------------------------
+  summary:
+    name: Publish Summary
+    needs: [clawhub, skillhub, agentskill, skills-sh, smithery]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Print summary
+        run: |
+          echo "## 📊 发布结果汇总" >> $GITHUB_STEP_SUMMARY
+          echo "| 平台 | 结果 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ClawHub | ${{ needs.clawhub.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SkillHub (腾讯) | ${{ needs.skillhub.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| agentskill.sh | ${{ needs.agentskill.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| skills.sh | ${{ needs.skills-sh.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Smithery | ${{ needs.smithery.result }} |" >> $GITHUB_STEP_SUMMARY
