@@ -75,6 +75,32 @@ jobs:
       - name: Install ClawHub CLI
         run: npm install -g clawhub@latest
 
+      - name: Login to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          if [ -z "$CLAWHUB_TOKEN" ]; then
+            echo "⚠️  CLAWHUB_TOKEN 未设置，跳过发布"
+            exit 0
+          fi
+          clawhub login --token "$CLAWHUB_TOKEN" --no-browser --no-input
+          clawhub whoami
+
+      - name: Prepare clean skill folder
+        run: |
+          mkdir -p build/${SKILL_NAME}
+          # 复制 skill 核心文件夹、排除 CI/git/构建产物
+          rsync -av \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='dist/' \
+            --exclude='build/' \
+            --exclude='tests/' \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            ./ build/${SKILL_NAME}/
+          ls -la build/${SKILL_NAME}
+
       - name: Publish to ClawHub
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
@@ -84,12 +110,12 @@ jobs:
             exit 0
           fi
           VERSION="${{ needs.package.outputs.version }}"
-          ZIP=$(ls dist/*.zip | head -1)
-          clawhub publish "$ZIP" \
-            -n "${SKILL_NAME}" \
-            -v "$VERSION" \
-            -t "$CLAWHUB_TOKEN" \
-            --changelog "Release v$VERSION"
+          clawhub publish "build/${SKILL_NAME}" \
+            --slug "${SKILL_NAME}" \
+            --name "${SKILL_NAME}" \
+            --version "$VERSION" \
+            --changelog "Release v$VERSION" \
+            --no-input
 
   # ------------------------------------------------------------------
   # agentskill.sh - 通过 GitHub webhook 触发（优先）
