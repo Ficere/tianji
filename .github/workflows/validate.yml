@@ -1,0 +1,72 @@
+name: Validate Skill
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  validate:
+    name: Validate SKILL.md & Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install lunarcalendar pyyaml
+
+      - name: Validate SKILL.md frontmatter
+        run: |
+          python - <<'PY'
+          import re, sys, yaml
+          txt = open("SKILL.md", encoding="utf-8").read()
+          m = re.match(r"^---\n(.*?)\n---", txt, re.DOTALL)
+          assert m, "SKILL.md 缺少 YAML frontmatter"
+          meta = yaml.safe_load(m.group(1))
+          assert "name" in meta, "SKILL.md 缺少 name 字段"
+          assert "description" in meta, "SKILL.md 缺少 description 字段"
+          assert re.match(r"^[a-z0-9\-]+$", meta["name"]), "name 字段必须为小写字母/数字/连字符"
+          assert len(meta["description"]) <= 1024, "description 字段超过 1024 字符"
+          print(f"✅ SKILL.md 验证通过: name={meta['name']}, version={meta.get('metadata', {}).get('version', 'N/A')}")
+          PY
+
+      - name: Smoke test fortune_calc.py
+        run: |
+          cat > /tmp/test.json <<'EOF'
+          {
+            "members": [
+              {"name": "测试", "gender": "男", "solar_date": "1994-04-15", "birth_time": "14:44",
+               "lunar": {"month": 3, "day": 5}}
+            ]
+          }
+          EOF
+          python scripts/fortune_calc.py --input /tmp/test.json --output /tmp/out.json
+          test -s /tmp/out.json && echo "✅ fortune_calc.py 运行正常"
+
+      - name: Smoke test name_wuge_calc.py
+        run: |
+          python scripts/name_wuge_calc.py --name "郭昱辰" --surname-len 1 > /tmp/name.json
+          test -s /tmp/name.json && echo "✅ name_wuge_calc.py 运行正常"
+
+      - name: Validate with gh skill (agentskills.io spec)
+        continue-on-error: true
+        run: |
+          # gh skill 可选校验，若 CLI 未安装则跳过
+          if command -v gh >/dev/null && gh skill --help >/dev/null 2>&1; then
+            gh skill publish --dry-run || true
+          else
+            echo "⚠️  gh skill CLI 不可用，跳过"
+          fi

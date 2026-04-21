@@ -10,6 +10,10 @@ An all-in-one Agent Skill for traditional Chinese fortune analysis. Input birth 
 
 [🛠️ Coze 技能商店](https://www.coze.cn/skills?skill_share_pid=7629277828386947078) · [📦 npx 安装](#安装--install) · [📜 Agent Skills 标准](https://agentskills.io)
 
+[![Validate](https://github.com/Ficere/tianji/actions/workflows/validate.yml/badge.svg)](https://github.com/Ficere/tianji/actions/workflows/validate.yml)
+[![Publish](https://github.com/Ficere/tianji/actions/workflows/publish.yml/badge.svg)](https://github.com/Ficere/tianji/actions/workflows/publish.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 ## 安装 / Install
 
 ```bash
@@ -225,6 +229,21 @@ tianji/
 ├── LICENSE
 └── README.md
 ```
+
+## 发布与分发 / Publishing
+
+本仓库配置了 CI 自动发布流程，push tag `v*` 即可一键分发到 5 个主流平台：
+
+| 平台 | 类型 | 安装命令 |
+|------|------|----------|
+| [ClawHub](https://clawhub.com) | OpenClaw 官方注册表 | `clawhub install tianji` |
+| [SkillHub](https://skillhub.cloud.tencent.com) | 腾讯云国内镜像 | `skillhub install tianji` |
+| [agentskill.sh](https://agentskill.sh) | 社区目录 | `/learn @Ficere/tianji` |
+| [skills.sh](https://skills.sh) | 多平台索引 | `npx skills add Ficere/tianji` |
+| [Smithery](https://smithery.ai) | MCP 大市场 | Web UI 一键安装 |
+| [Coze 技能商店](https://www.coze.cn/skills?skill_share_pid=7629277828386947078) | 字节 Coze | Web UI「获取」 |
+
+发布流程与凭证配置见 [.github/PUBLISHING.md](.github/PUBLISHING.md)。
 
 ## 免责声明 / Disclaimer
 
