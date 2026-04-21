@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       targets:
-        description: "逗号分隔的目标平台 (clawhub,smithery,agentskill,skills,skillhub)，留空则发布全部"
+        description: "逗号分隔的目标平台 (clawhub,smithery,agentskill,skills)，留空则发布全部"
         required: false
         default: ""
 
@@ -16,7 +16,7 @@ env:
 
 jobs:
   # ------------------------------------------------------------------
-  # 预处理：打包 skill 为 zip，供 ClawHub / SkillHub 等 CLI 使用
+  # 预处理：打包 skill 为 zip，供 ClawHub 等 CLI 使用
   # ------------------------------------------------------------------
   package:
     name: Package Skill Bundle
@@ -92,47 +92,6 @@ jobs:
             --changelog "Release v$VERSION"
 
   # ------------------------------------------------------------------
-  # SkillHub (腾讯镜像) - 复用 clawhub CLI，指向不同 registry
-  # ------------------------------------------------------------------
-  skillhub:
-    name: Publish → SkillHub (腾讯)
-    needs: package
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.targets == '' || contains(github.event.inputs.targets, 'skillhub') }}
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: skill-bundle
-          path: dist
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install ClawHub CLI (SkillHub uses same CLI)
-        run: npm install -g clawhub@latest
-
-      - name: Publish to SkillHub
-        env:
-          SKILLHUB_TOKEN: ${{ secrets.SKILLHUB_TOKEN }}
-          SKILLHUB_REGISTRY: ${{ secrets.SKILLHUB_REGISTRY || 'https://skillhub.cloud.tencent.com' }}
-        run: |
-          if [ -z "$SKILLHUB_TOKEN" ]; then
-            echo "⚠️  SKILLHUB_TOKEN 未设置，跳过发布"
-            exit 0
-          fi
-          VERSION="${{ needs.package.outputs.version }}"
-          ZIP=$(ls dist/*.zip | head -1)
-          CLAWHUB_REGISTRY="$SKILLHUB_REGISTRY" clawhub publish "$ZIP" \
-            -n "${SKILL_NAME}" \
-            -v "$VERSION" \
-            -t "$SKILLHUB_TOKEN" \
-            --changelog "Release v$VERSION"
-
-  # ------------------------------------------------------------------
   # agentskill.sh - 通过 GitHub webhook 触发（优先）
   #   or 主动 POST 触发索引刷新
   # ------------------------------------------------------------------
@@ -191,7 +150,7 @@ jobs:
   # ------------------------------------------------------------------
   github-release:
     name: Create GitHub Release
-    needs: [package, clawhub, skillhub, agentskill]
+    needs: [package, clawhub, agentskill]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -233,7 +192,7 @@ jobs:
   # ------------------------------------------------------------------
   summary:
     name: Publish Summary
-    needs: [clawhub, skillhub, agentskill, skills-sh, smithery]
+    needs: [clawhub, agentskill, skills-sh, smithery]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -243,7 +202,6 @@ jobs:
           echo "| 平台 | 结果 |" >> $GITHUB_STEP_SUMMARY
           echo "|------|------|" >> $GITHUB_STEP_SUMMARY
           echo "| ClawHub | ${{ needs.clawhub.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| SkillHub (腾讯) | ${{ needs.skillhub.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| agentskill.sh | ${{ needs.agentskill.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| skills.sh | ${{ needs.skills-sh.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Smithery | ${{ needs.smithery.result }} |" >> $GITHUB_STEP_SUMMARY
