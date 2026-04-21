@@ -14,6 +14,16 @@ An all-in-one Agent Skill for traditional Chinese fortune analysis. Input birth 
 [![Publish](https://github.com/Ficere/tianji/actions/workflows/publish.yml/badge.svg)](https://github.com/Ficere/tianji/actions/workflows/publish.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
+<!-- 各平台一键安装命令 / Per-platform one-liners -->
+
+| 平台 / Platform | 一键安装 / One-liner |
+|---|---|
+| [ClawHub](https://clawhub.com) | `clawhub install tianji` |
+| [skills.sh](https://skills.sh) | `npx skills add Ficere/tianji` |
+| [agentskill.sh](https://agentskill.sh) | `/learn @Ficere/tianji` |
+| [Smithery](https://smithery.ai) | Web UI 一键绑定 / one-click bind |
+| [Coze 技能商店](https://www.coze.cn/skills?skill_share_pid=7629277828386947078) | Web UI 「获取」 / click "Get" |
+
 ## 安装 / Install
 
 ```bash
@@ -232,12 +242,11 @@ tianji/
 
 ## 发布与分发 / Publishing
 
-本仓库配置了 CI 自动发布流程，push tag `v*` 即可一键分发到 5 个主流平台：
+本仓库配置了 CI 自动发布流程，push tag `v*` 即可一键分发到以下主流平台：
 
 | 平台 | 类型 | 安装命令 |
 |------|------|----------|
 | [ClawHub](https://clawhub.com) | OpenClaw 官方注册表 | `clawhub install tianji` |
-| [SkillHub](https://skillhub.cloud.tencent.com) | 腾讯云国内镜像 | `skillhub install tianji` |
 | [agentskill.sh](https://agentskill.sh) | 社区目录 | `/learn @Ficere/tianji` |
 | [skills.sh](https://skills.sh) | 多平台索引 | `npx skills add Ficere/tianji` |
 | [Smithery](https://smithery.ai) | MCP 大市场 | Web UI 一键安装 |
