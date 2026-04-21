@@ -118,12 +118,22 @@ jobs:
             exit 0
           fi
           VERSION="${{ needs.package.outputs.version }}"
-          clawhub publish "build/${SKILL_NAME}" \
-            --slug "${SKILL_NAME}" \
-            --name "${SKILL_NAME}" \
-            --version "$VERSION" \
-            --changelog "Release v$VERSION" \
-            --no-input
+          # ClawHub 后端 GitHub API 有时命中全局频次限制，最多重试 5 次
+          for i in 1 2 3 4 5; do
+            if clawhub publish "build/${SKILL_NAME}" \
+                --slug "${SKILL_NAME}" \
+                --name "${SKILL_NAME}" \
+                --version "$VERSION" \
+                --changelog "Release v$VERSION" \
+                --no-input; then
+              echo "✅ ClawHub 发布成功 (第 $i 次尝试)"
+              exit 0
+            fi
+            echo "⚠️  第 $i 次发布失败，60s 后重试..."
+            sleep 60
+          done
+          echo "❌ ClawHub 发布持续失败（可能是后端限额）"
+          exit 1
 
   # ------------------------------------------------------------------
   # agentskill.sh - 通过 GitHub webhook 触发（优先）
