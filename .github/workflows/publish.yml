@@ -34,6 +34,12 @@ jobs:
           else
             VERSION=$(python -c "import re,yaml; t=open('SKILL.md').read(); m=re.match(r'^---\n(.*?)\n---',t,re.S); print(yaml.safe_load(m.group(1)).get('metadata',{}).get('version','0.0.0'))")
           fi
+          # 保证 semver 格式：4 → 4.0.0；4.1 → 4.1.0
+          case "$VERSION" in
+            *.*.*) : ;;
+            *.*)   VERSION="$VERSION.0" ;;
+            *)     VERSION="$VERSION.0.0" ;;
+          esac
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Version: $VERSION"
 

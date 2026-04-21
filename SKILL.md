@@ -10,7 +10,7 @@ description: >
   三才五格、姓名测算、姓名打分、名字吉凶、综合测算、一站式测算、天机时使用此技能。
 metadata:
   author: computer
-  version: '4.0'
+  version: '4.1.0'
   language: zh-CN
 ---
 
