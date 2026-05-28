@@ -1684,10 +1684,44 @@ def analyze_synastry(members_results):
         details.append("五行俱全加分 +5分")
 
     # 2. 生肖关系 (20分)
-    liu_he = [("子", "丑"), ("寅", "亥"), ("卯", "戌"), ("辰", "酉"), ("巳", "申"), ("午", "未")]
-    san_he = [("申", "子", "辰"), ("寅", "午", "戌"), ("巳", "酉", "丑"), ("亥", "卯", "未")]
-    xiang_chong = [("子", "午"), ("丑", "未"), ("寅", "申"), ("卯", "酉"), ("辰", "戌"), ("巳", "亥")]
-    xiang_hai = [("子", "未"), ("丑", "午"), ("寅", "巳"), ("卯", "辰"), ("申", "亥"), ("酉", "戌")]
+    # ---- 关系表（均以 frozenset 匹配，避免方向问题）----
+    # 六合：子丑 寅亥 卯戌 辰酉 巳申 午未
+    liu_he_set = {
+        frozenset(p) for p in [
+            ("子", "丑"), ("寅", "亥"), ("卯", "戌"),
+            ("辰", "酉"), ("巳", "申"), ("午", "未"),
+        ]
+    }
+    # 三合局：申子辰 寅午戌 巳酉丑 亥卯未（两支不同才算）
+    san_he_groups = [
+        ("申", "子", "辰"), ("寅", "午", "戌"),
+        ("巳", "酉", "丑"), ("亥", "卯", "未"),
+    ]
+    # 六冲：子午 丑未 寅申 卯酉 辰戌 巳亥
+    liu_chong_set = {
+        frozenset(p) for p in [
+            ("子", "午"), ("丑", "未"), ("寅", "申"),
+            ("卯", "酉"), ("辰", "戌"), ("巳", "亥"),
+        ]
+    }
+    # 相害：子未 丑午 寅巳 卯辰 申亥 酉戌
+    xiang_hai_set = {
+        frozenset(p) for p in [
+            ("子", "未"), ("丑", "午"), ("寅", "巳"),
+            ("卯", "辰"), ("申", "亥"), ("酉", "戌"),
+        ]
+    }
+    # 相刑（-2分）：
+    #   无礼之刑：寅巳申（两两相刑）
+    #   无恩之刑：丑戌未（两两相刑）
+    #   无义之刑：子卯（互刑）
+    xiang_xing_set = {
+        frozenset(p) for p in [
+            ("寅", "巳"), ("巳", "申"), ("寅", "申"),
+            ("丑", "戌"), ("戌", "未"), ("丑", "未"),
+            ("子", "卯"),
+        ]
+    }
 
     sx_score = 10
     sx_details = []
@@ -1698,22 +1732,30 @@ def analyze_synastry(members_results):
 
     for m1, m2 in pairs:
         z1, z2 = m1["year_zhi"], m2["year_zhi"]
-        for a, b in liu_he:
-            if (z1 == a and z2 == b) or (z1 == b and z2 == a):
-                sx_score += 7
-                sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})六合 +7分")
-        for group in san_he:
+        pair_fs = frozenset([z1, z2])
+
+        # 同支：仅标注，不加减分
+        if z1 == z2:
+            sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})同支比和")
+            continue  # 同支不再叠加三合
+
+        if pair_fs in liu_he_set:
+            sx_score += 7
+            sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})六合 +7分")
+        for group in san_he_groups:
+            # z1 != z2 已在上方 continue 处理，此处仅处理不同支
             if z1 in group and z2 in group:
                 sx_score += 5
-                sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})三合 +5分")
-        for a, b in xiang_chong:
-            if (z1 == a and z2 == b) or (z1 == b and z2 == a):
-                sx_score -= 5
-                sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})六冲 -5分")
-        for a, b in xiang_hai:
-            if (z1 == a and z2 == b) or (z1 == b and z2 == a):
-                sx_score -= 3
-                sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})相害 -3分")
+                sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})三合{group} +5分")
+        if pair_fs in liu_chong_set:
+            sx_score -= 5
+            sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})六冲 -5分")
+        if pair_fs in xiang_hai_set:
+            sx_score -= 3
+            sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})相害 -3分")
+        if pair_fs in xiang_xing_set:
+            sx_score -= 2
+            sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})相刑 -2分")
 
     score += min(max(sx_score, 0), 20)
     details.extend(sx_details)
