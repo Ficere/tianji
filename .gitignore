@@ -1,0 +1,7 @@
+
+# 本地临时计算文件（禁止提交，含用户隐私数据）
+team_*.json
+team_*.md
+*_result*.json
+*_report*.md
+*_input.json
