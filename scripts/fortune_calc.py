@@ -34,6 +34,21 @@ import json
 import sys
 import argparse
 import math
+import datetime
+
+# 公历→农历转换（zhdate库，pip install zhdate）
+try:
+    from zhdate import ZhDate as _ZhDate
+    def solar_to_lunar(year, month, day):
+        """公历转农历，返回 (lunar_month, lunar_day)。
+        依赖 zhdate 库。若库不可用则返回 (1, 1) 并打印警告。
+        """
+        d = _ZhDate.from_datetime(datetime.datetime(year, month, day))
+        return d.lunar_month, d.lunar_day
+except ImportError:
+    def solar_to_lunar(year, month, day):
+        print("⚠️ 警告：zhdate库未安装，无法自动转换农历，称骨计算将不准确。请运行: pip install zhdate", file=sys.stderr)
+        return 1, 1
 
 # ============================================================
 # 基础数据
@@ -1466,9 +1481,17 @@ def analyze_person(member):
     birth_time = member["birth_time"]
     bazi = list(member["bazi"]) if member.get("bazi") else [None, None, None, None]
     lunar = member.get("lunar", {})
-    lunar_month = lunar.get("month", 1)
-    lunar_day = lunar.get("day", 1)
     birth_city = member.get("birth_city", "")
+
+    # 公历转农历：若用户未提供 lunar 字段，自动转换
+    if "month" in lunar and "day" in lunar:
+        lunar_month = int(lunar["month"])
+        lunar_day = int(lunar["day"])
+    else:
+        # 自动公历转农历（需 zhdate 库）
+        _solar_parts = solar_date.split("-")
+        _sy, _sm, _sd = int(_solar_parts[0]), int(_solar_parts[1]), int(_solar_parts[2])
+        lunar_month, lunar_day = solar_to_lunar(_sy, _sm, _sd)
 
     # 解析时间
     parts = birth_time.split(":")

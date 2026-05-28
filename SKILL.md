@@ -104,10 +104,17 @@ metadata:
 使用 `scripts/fortune_calc.py` 进行批量计算。该脚本接受JSON格式的输入：
 
 ```bash
+# 首次使用请先安装依赖（用于公历→农历自动转换）
+pip install zhdate
+
 python scripts/fortune_calc.py --input data.json --output result.json
 ```
 
-输入JSON格式（bazi 字段可省略，脚本会自动计算）：
+**⚠️ 重要依赖：**
+- `zhdate`（必须）：公历→农历自动转换，用于称骨计算。若未安装，月和日骨重将固定为正月初一，称骨结果严重偏差。
+- `ephem`（可选）：月亮星座更高精度计算。
+
+输入JSON格式（`lunar` 字段可省略，脚本会自动从公历转换；若用户已知精确农历可传入以覆盖自动转换）：
 ```json
 {
   "members": [
@@ -366,6 +373,7 @@ combo = _zodiac_combo_reading(sun_sign, moon_sign, rising_sign)
 ## Important Notes
 
 - **四柱全自动计算**：脚本内置年柱、月柱、日柱、时柱的自动计算，无需手动排盘或第三方服务
+- **称骨农历自动转换（v6.0修复）**：v6.0 起脚本自动将公历转农历（依赖 `zhdate` 库）用于称骨计算。若用户未提供 `lunar` 字段，**必须安装 zhdate**（`pip install zhdate`），否则月和日骨重将错误固定为正月初一，导致称骨严重偏差（误差可达±20分以上）。
 - **节气精确计算**：基于 Meeus 《天文算法》 VSOP87 简化算法计算太阳黄经，节气时刻误差 < 10分钟
 - 年份以**立春精确时刻**为界（非春节，也非简单以“2月4日”为界）
 - 月份以**节气精确时刻**为界（非公历月初一，也非农历初一）
