@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 """
-天机 · 综合命理测算计算脚本
-支持：八字五行、日柱自主计算、袁天罡称骨、紫微排盘概要、西洋星座、三才五格姓名测算、多人合盘评分
+天机 · 综合命理测算计算脚本 v6.0
+支持：八字五行、四柱自动计算、袁天罡称骨、紫微排盘（14主星+四化+大限）、
+      西洋星座（太阳/月亮/上升）、三才五格姓名测算、多人合盘评分
+
+v6.0 新增：
+  - P1-A: 星座精确化 —— 用太阳黄经精确判断太阳星座，消除固定边界错判
+  - P1-B: 紫微14主星安星 —— 紫微系+天府系完整落宫，六吉六煞辅星
+  - P2-A: 月亮星座 —— Meeus简化月球黄经，边界±3°时给出提示
+  - P2-B: 四化飞星 —— 按年干安化禄/化权/化科/化忌；大限推算序列
+  - P2-C: 上升星座 —— 基于出生地经纬度+恒星时计算上升点（用户选填城市）
 
 用法：
   python fortune_calc.py --input data.json --output result.json
 
-输入JSON格式：
+输入JSON格式（v5.0不变，无需bazi字段）：
 {
   "members": [
     {
@@ -14,20 +22,12 @@
       "gender": "男",
       "solar_date": "1990-05-20",
       "birth_time": "08:30",
-      "bazi": ["庚午", "辛巳", "乙酉", "庚辰"],
       "lunar": {"month": 4, "day": 26},
-      "surname_len": 1
+      "surname_len": 1,
+      "birth_city": "北京"   // 可选，用于上升星座计算
     }
   ]
 }
-
-说明：
-- bazi 为四柱八字（年柱、月柱、日柱、时柱）
-- 日柱可由脚本自动计算（基于儒略日算法），也可由调用者预填
-- lunar.month 为农历月份数字（1-12）
-- lunar.day 为农历日期数字（1-30）
-- birth_time 为真太阳时
-- surname_len 为姓氏字数（默认1，复姓填2），用于三才五格计算
 """
 
 import json
@@ -252,19 +252,14 @@ def calc_year_pillar(year, month, day, hour=0, minute=0):
     以立春为年的分界：立春前属上一年，立春后（含）属当年。
     hour/minute 为北京时间。
     """
-    # 计算当年立春时刻（北京时间）
     jde = _find_solar_term_jde(year, 315)
     lc_y, lc_m, lc_d, lc_h, lc_mi = _jde_to_beijing(jde)
-    
-    # 比较出生时间与立春时间
     birth_val = (month, day, hour, minute)
     lichun_val = (lc_m, lc_d, lc_h, lc_mi)
-    
     if birth_val < lichun_val:
-        gz_year = year - 1  # 立春前，属上一年
+        gz_year = year - 1
     else:
         gz_year = year
-    
     gan_idx = (gz_year - 4) % 10
     zhi_idx = (gz_year - 4) % 12
     return TIAN_GAN[gan_idx] + DI_ZHI[zhi_idx]
@@ -274,13 +269,12 @@ def calc_year_pillar(year, month, day, hour=0, minute=0):
 # 月柱计算
 # ============================================================
 
-# 五虎遁口诀：年干 → 寅月天干
 _WUHU_DUN = {
-    "甲": "丙", "己": "丙",  # 甲己之年丙作首
-    "乙": "戊", "庚": "戊",  # 乙庚之年戊为头
-    "丙": "庚", "辛": "庚",  # 丙辛之岁寻庚上
-    "丁": "壬", "壬": "壬",  # 丁壬壬寅顺水流
-    "戊": "甲", "癸": "甲",  # 戊癸之年甲寅头
+    "甲": "丙", "己": "丙",
+    "乙": "戊", "庚": "戊",
+    "丙": "庚", "辛": "庚",
+    "丁": "壬", "壬": "壬",
+    "戊": "甲", "癸": "甲",
 }
 
 
@@ -289,14 +283,9 @@ def calc_month_pillar(year, month, day, hour=0, minute=0):
     根据公历日期时间计算月柱天干地支。
     月支由节气决定（每月以节气为界，非公历月初）。
     月干由五虎遁推算。
-    hour/minute 为北京时间。
     """
-    # 获取覆盖该年的节气日期表
     jieqi_dates = _get_month_jieqi_dates(year)
-    
-    # 将出生时间与节气时间逐一比较，找到所属月建
     birth_val = (year, month, day, hour, minute)
-    
     zhi_idx = None
     for i in range(len(jieqi_dates) - 1):
         cur = jieqi_dates[i]
@@ -306,25 +295,16 @@ def calc_month_pillar(year, month, day, hour=0, minute=0):
         if cur_val <= birth_val < nxt_val:
             zhi_idx = cur[5]
             break
-    
     if zhi_idx is None:
-        # 回退：如果在所有区间之外，使用最后一个区间
         zhi_idx = jieqi_dates[-1][5]
-    
     month_zhi = DI_ZHI[zhi_idx]
-    
-    # 确定年干（需要考虑立春分界）
     year_gz = calc_year_pillar(year, month, day, hour, minute)
     year_gan = year_gz[0]
-    
-    # 五虎遁推月干：从年干查寅月起始天干，然后顺推
     yin_gan = _WUHU_DUN[year_gan]
     yin_gan_idx = TIAN_GAN.index(yin_gan)
-    # 寅=2，月支zhi_idx相对于寅的偏移
     offset = (zhi_idx - 2) % 12
     month_gan_idx = (yin_gan_idx + offset) % 10
     month_gan = TIAN_GAN[month_gan_idx]
-    
     return month_gan + month_zhi
 
 
@@ -332,30 +312,23 @@ def calc_month_pillar(year, month, day, hour=0, minute=0):
 # 时柱计算
 # ============================================================
 
-# 五鼠遁口诀：日干 → 子时天干
 _WUSHU_DUN = {
-    "甲": "甲", "己": "甲",  # 甲己还加甲
-    "乙": "丙", "庚": "丙",  # 乙庚丙作初
-    "丙": "戊", "辛": "戊",  # 丙辛从戊起
-    "丁": "庚", "壬": "庚",  # 丁壬庚子居
-    "戊": "壬", "癸": "壬",  # 戊癸壬子头
+    "甲": "甲", "己": "甲",
+    "乙": "丙", "庚": "丙",
+    "丙": "戊", "辛": "戊",
+    "丁": "庚", "壬": "庚",
+    "戊": "壬", "癸": "壬",
 }
 
 
 def calc_hour_pillar(day_gan, hour_float):
-    """
-    根据日干和出生时间（小时数）计算时柱。
-    hour_float: 0-24 的浮点数。
-    """
+    """根据日干和出生时间（小时数）计算时柱。"""
     shichen_idx = get_shichen(hour_float)
     hour_zhi = DI_ZHI[shichen_idx]
-    
-    # 五鼠遁推时干
     zi_gan = _WUSHU_DUN[day_gan]
     zi_gan_idx = TIAN_GAN.index(zi_gan)
     hour_gan_idx = (zi_gan_idx + shichen_idx) % 10
     hour_gan = TIAN_GAN[hour_gan_idx]
-    
     return hour_gan + hour_zhi
 
 
@@ -366,15 +339,12 @@ def calc_hour_pillar(day_gan, hour_float):
 def calc_day_pillar(year, month, day):
     """
     根据公历日期计算日柱天干地支。
-
-    原理：干支纪日是连续的60周期循环。利用儒略日编号 (JDN) 与已知
-    基准日的差值推算任意日期的干支。
     基准：2000-01-01 = JDN 2451545 = 戊午日
     """
     jdn = gregorian_to_jdn(year, month, day)
-    base_jdn = 2451545  # 2000-01-01
-    base_gan = 4        # 戊 = TIAN_GAN[4]
-    base_zhi = 6        # 午 = DI_ZHI[6]
+    base_jdn = 2451545
+    base_gan = 4
+    base_zhi = 6
     diff = jdn - base_jdn
     gan_idx = (base_gan + diff) % 10
     zhi_idx = (base_zhi + diff) % 12
@@ -384,20 +354,13 @@ def calc_day_pillar(year, month, day):
 def calc_four_pillars(year, month, day, hour=0, minute=0):
     """
     一次性计算完整四柱八字。
-    参数为公历日期+北京时间。
-    返回 [年柱, 月柱, 日柱, 时柱] 列表。
-    
-    子时处理说明：
-    采用“晚子时不换日柱”派（23:00-00:00 仍用当日日柱）。
-    这是目前主流命理网站和大多数命理实践采用的方式。
+    子时处理：晚子时不换日柱（23:00-00:00 仍用当日日柱）。
     """
     hour_float = hour + minute / 60.0
-    
     year_pillar = calc_year_pillar(year, month, day, hour, minute)
     month_pillar = calc_month_pillar(year, month, day, hour, minute)
     day_pillar = calc_day_pillar(year, month, day)
     hour_pillar = calc_hour_pillar(day_pillar[0], hour_float)
-    
     return [year_pillar, month_pillar, day_pillar, hour_pillar]
 
 
@@ -569,41 +532,170 @@ def calc_chenggu(year_gz, lunar_month, lunar_day, hour):
 
 
 # ============================================================
-# 星座
+# P1-A: 星座精确化 —— 太阳黄经精确判断
 # ============================================================
 
 ZODIAC_INFO = {
-    "白羊座": {"元素": "火", "守护星": "火星", "模式": "开创", "特质": "勇敢、冲动、直率、热情、好胜"},
-    "金牛座": {"元素": "土", "守护星": "金星", "模式": "固定", "特质": "稳重、务实、固执、享受、忠诚"},
-    "双子座": {"元素": "风", "守护星": "水星", "模式": "变动", "特质": "聪明、善变、沟通、好奇、灵活"},
-    "巨蟹座": {"元素": "水", "守护星": "月亮", "模式": "开创", "特质": "温柔、顾家、敏感、保护、多情"},
-    "狮子座": {"元素": "火", "守护星": "太阳", "模式": "固定", "特质": "自信、慷慨、热情、领导、骄傲"},
-    "处女座": {"元素": "土", "守护星": "水星", "模式": "变动", "特质": "细致、完美、分析、服务、挑剔"},
-    "天秤座": {"元素": "风", "守护星": "金星", "模式": "开创", "特质": "和谐、优雅、犹豫、公正、社交"},
-    "天蝎座": {"元素": "水", "守护星": "冥王星", "模式": "固定", "特质": "深邃、神秘、执着、洞察、占有"},
-    "射手座": {"元素": "火", "守护星": "木星", "模式": "变动", "特质": "自由、乐观、冒险、直言、哲思"},
-    "摩羯座": {"元素": "土", "守护星": "土星", "模式": "开创", "特质": "严谨、上进、坚韧、务实、保守"},
-    "水瓶座": {"元素": "风", "守护星": "天王星", "模式": "固定", "特质": "独立、创新、博爱、叛逆、理性"},
-    "双鱼座": {"元素": "水", "守护星": "海王星", "模式": "变动", "特质": "浪漫、直觉、同情、梦幻、牺牲"},
+    "白羊座": {
+        "元素": "火", "守护星": "火星", "模式": "开创",
+        "特质": "勇敢、冲动、直率、热情、好胜",
+        "优势": "行动力强、充满热忱、敢于开拓、领导力天然",
+        "挑战": "容易冲动、缺乏耐心、难以收尾、自我中心",
+        "人际": "朋友眼中的发起者，不擅长维系但擅长点燃",
+        "核心需求": "自由与挑战，拒绝停滞",
+    },
+    "金牛座": {
+        "元素": "土", "守护星": "金星", "模式": "固定",
+        "特质": "稳重、务实、固执、享受、忠诚",
+        "优势": "耐心持久、可靠踏实、审美出众、情感专一",
+        "挑战": "抗拒变化、固执己见、行动迟缓、过于依赖稳定",
+        "人际": "可信赖的老友型，难以发展但极为忠诚",
+        "核心需求": "物质安全感与感官愉悦",
+    },
+    "双子座": {
+        "元素": "风", "守护星": "水星", "模式": "变动",
+        "特质": "聪明、善变、沟通、好奇、灵活",
+        "优势": "思维敏捷、口才出众、学习快、适应性强",
+        "挑战": "注意力分散、表里不一、难以深入、优柔寡断",
+        "人际": "社交蝴蝶，认识的人多但深交的少",
+        "核心需求": "信息刺激与多元体验",
+    },
+    "巨蟹座": {
+        "元素": "水", "守护星": "月亮", "模式": "开创",
+        "特质": "温柔、顾家、敏感、保护、多情",
+        "优势": "情感丰富、直觉敏锐、照顾他人、忠于家庭",
+        "挑战": "情绪化、记仇、过度保护、依赖感重",
+        "人际": "小圈子极深情，陌生人面前筑起壳",
+        "核心需求": "情感安全感与归属感",
+    },
+    "狮子座": {
+        "元素": "火", "守护星": "太阳", "模式": "固定",
+        "特质": "自信、慷慨、热情、领导、骄傲",
+        "优势": "领袖魅力、创造力强、慷慨大方、忠于承诺",
+        "挑战": "自我为中心、需要被认可、骄傲不易妥协",
+        "人际": "舞台中心型，吸引追随者但需要真诚回应",
+        "核心需求": "被看见、被欣赏、被尊重",
+    },
+    "处女座": {
+        "元素": "土", "守护星": "水星", "模式": "变动",
+        "特质": "细致、完美、分析、服务、挑剔",
+        "优势": "严谨细心、分析力强、可靠务实、服务意识强",
+        "挑战": "过度苛求、自我批评、优柔寡断、焦虑倾向",
+        "人际": "默默付出型，不善于表达需求",
+        "核心需求": "秩序感与被需要感",
+    },
+    "天秤座": {
+        "元素": "风", "守护星": "金星", "模式": "开创",
+        "特质": "和谐、优雅、犹豫、公正、社交",
+        "优势": "外交手腕强、审美高雅、善于合作、追求公平",
+        "挑战": "优柔寡断、回避冲突、讨好倾向、不易表达真实立场",
+        "人际": "天生社交家，但真实自我常被和谐外表遮盖",
+        "核心需求": "平衡、美感与伴侣关系",
+    },
+    "天蝎座": {
+        "元素": "水", "守护星": "冥王星", "模式": "固定",
+        "特质": "深邃、神秘、执着、洞察、占有",
+        "优势": "洞察力强、意志坚定、感情深厚、擅长危机应对",
+        "挑战": "控制欲强、记恨、妒忌、难以信任他人",
+        "人际": "要么极深要么极远，鲜有中间状态",
+        "核心需求": "真实的深度连接与掌控感",
+    },
+    "射手座": {
+        "元素": "火", "守护星": "木星", "模式": "变动",
+        "特质": "自由、乐观、冒险、直言、哲思",
+        "优势": "乐观开阔、哲学思维、行动力、探索欲强",
+        "挑战": "不负责任、过于直接、回避承诺、虎头蛇尾",
+        "人际": "广博却浅淡，重自由轻稳定",
+        "核心需求": "自由、意义感与无限可能",
+    },
+    "摩羯座": {
+        "元素": "土", "守护星": "土星", "模式": "开创",
+        "特质": "严谨、上进、坚韧、务实、保守",
+        "优势": "野心勃勃、自律极强、长期规划、责任感重",
+        "挑战": "过于功利、压抑情感、悲观倾向、与人有距离感",
+        "人际": "慢热型，值得信赖但需要时间建立",
+        "核心需求": "成就感、地位与长期安全",
+    },
+    "水瓶座": {
+        "元素": "风", "守护星": "天王星", "模式": "固定",
+        "特质": "独立、创新、博爱、叛逆、理性",
+        "优势": "思维前卫、人道主义、客观理性、原创力强",
+        "挑战": "情感疏离、固执于理念、叛逆为叛逆、过于理性",
+        "人际": "爱全人类却难以亲近个体",
+        "核心需求": "独立、理想与与众不同",
+    },
+    "双鱼座": {
+        "元素": "水", "守护星": "海王星", "模式": "变动",
+        "特质": "浪漫、直觉、同情、梦幻、牺牲",
+        "优势": "同理心强、艺术天分、直觉敏锐、包容力大",
+        "挑战": "界限模糊、逃避现实、容易受影响、自我牺牲过度",
+        "人际": "感同身受型，容易被他人情绪淹没",
+        "核心需求": "超越与灵性连接，逃离粗粝现实",
+    },
 }
 
 ZODIAC_ORDER = ["白羊座", "金牛座", "双子座", "巨蟹座", "狮子座", "处女座",
                 "天秤座", "天蝎座", "射手座", "摩羯座", "水瓶座", "双鱼座"]
 
+# 星座与黄经：白羊 0°，金牛 30°，...，双鱼 330°
+# 上升星座/月亮解读补充
+_MOON_SIGN_KEYWORDS = {
+    "白羊座": "情绪直接爆发、需要即时回应、内心渴望冲锋",
+    "金牛座": "情绪稳定如山、需要物质与感官安慰、记情绪账",
+    "双子座": "情绪通过语言宣泄、理性化感受、内心矛盾频繁",
+    "巨蟹座": "情绪如潮汐、极度敏感、保护外壳下有无限柔情",
+    "狮子座": "情绪需要被看见、容易因被忽视而受伤、戏剧化",
+    "处女座": "情绪内化为焦虑、担心出错、用行动代替情感表达",
+    "天秤座": "情绪追求和谐、回避冲突、难以表达真实不满",
+    "天蝎座": "情绪如暗流、不轻易示人、伤了就记一辈子",
+    "射手座": "情绪乐观快速、不愿深陷悲伤、需要自由消化",
+    "摩羯座": "情绪压抑克制、用工作逃避感受、渴望被理解",
+    "水瓶座": "情绪理性化、拒绝被情绪控制、保持超然距离",
+    "双鱼座": "情绪如海绵吸收周围一切、边界模糊、直觉超强",
+}
+
+_RISING_SIGN_KEYWORDS = {
+    "白羊座": "第一印象：精力充沛、直接、有点好斗，充满活力",
+    "金牛座": "第一印象：稳重可靠、有品味、不慌不忙，给人安全感",
+    "双子座": "第一印象：机灵健谈、反应快、表情丰富，善于打破沉默",
+    "巨蟹座": "第一印象：温柔体贴、略显腼腆、有家庭气息，让人舒适",
+    "狮子座": "第一印象：自信闪耀、有存在感、喜欢被注意，天生领袖气场",
+    "处女座": "第一印象：整洁有条理、谨慎观察、话不多但精准",
+    "天秤座": "第一印象：优雅迷人、和善礼貌、重视外表，让人如沐春风",
+    "天蝎座": "第一印象：神秘深沉、目光锐利、沉默中带压迫感",
+    "射手座": "第一印象：开朗爽直、大大咧咧、充满冒险精神",
+    "摩羯座": "第一印象：成熟稳重、专业可信、保持距离，老成持重",
+    "水瓶座": "第一印象：与众不同、独立特行、有点冷淡但极有个性",
+    "双鱼座": "第一印象：温柔飘逸、眼神迷离、有种难以捉摸的梦幻感",
+}
+
+
+def get_zodiac_precise(year, month, day, hour=12, minute=0):
+    """
+    P1-A: 使用太阳黄经精确判断太阳星座。
+    消除固定月/日边界的错判（边界附近生日每年切换时刻不同）。
+    返回: (星座名, 星座信息dict, 黄经度数, 是否边界附近)
+    """
+    jd = gregorian_to_jd(year, month, day, hour, minute)
+    # 北京时间转UT（减8小时）
+    jd_ut = jd - 8.0 / 24.0
+    lon = _solar_longitude(jd_ut)
+    sign_idx = int(lon // 30) % 12
+    degree_in_sign = lon % 30
+    # 边界±2°（约±2天）时发出提示
+    near_boundary = degree_in_sign < 2.0 or degree_in_sign > 28.0
+    sign_name = ZODIAC_ORDER[sign_idx]
+    return sign_name, ZODIAC_INFO.get(sign_name, {}), round(lon, 2), near_boundary
+
 
 def get_zodiac(month, day):
-    boundaries = [
-        (1, 20), (2, 19), (3, 21), (4, 20), (5, 21), (6, 22),
-        (7, 23), (8, 23), (9, 23), (10, 24), (11, 23), (12, 22)
-    ]
-    signs = ["摩羯座", "水瓶座", "双鱼座", "白羊座", "金牛座", "双子座",
-             "巨蟹座", "狮子座", "处女座", "天秤座", "天蝎座", "射手座", "摩羯座"]
-    for i, (m, d) in enumerate(boundaries):
-        if month == m and day < d:
-            return signs[i], ZODIAC_INFO.get(signs[i], {})
-        elif month == m and day >= d:
-            return signs[i + 1], ZODIAC_INFO.get(signs[i + 1], {})
-    return "未知", {}
+    """
+    向后兼容接口（旧版固定边界）。
+    新代码请使用 get_zodiac_precise()。
+    """
+    # 用当年正午计算，year 影响不大只差±1度
+    sign, info, lon, near = get_zodiac_precise(2000, month, day, 12, 0)
+    return sign, info
 
 
 def zodiac_angle(z1, z2):
@@ -616,30 +708,511 @@ def zodiac_angle(z1, z2):
 
 
 # ============================================================
-# 紫微斗数排盘概要
+# P2-A: 月亮星座 —— Meeus 简化月球黄经
 # ============================================================
 
-def calc_ziwei(year_gan, year_zhi, lunar_month, lunar_day, hour, gender):
+def _moon_longitude(jd_ut):
+    """
+    简化月球黄经计算（Meeus《天文算法》第47章 ELP2000-82B 主要项）。
+    精度约 ±1°（对应月亮移动时间约 ±2小时）。
+    在星座边界±3°以内时应提示不确定性。
+    """
+    T = (jd_ut - 2451545.0) / 36525.0
+    # 月亮平黄经
+    L0 = 218.3164477 + 481267.88123421 * T - 0.0015786 * T * T + T * T * T / 538841.0
+    # 太阳平近点角
+    M = 357.5291092 + 35999.0502909 * T - 0.0001536 * T * T
+    # 月亮平近点角
+    Mp = 134.9633964 + 477198.8675055 * T + 0.0087414 * T * T + T * T * T / 69699.0
+    # 月亮纬度参数
+    F = 93.2720950 + 483202.0175233 * T - 0.0036539 * T * T
+    # 月日距角（elongation）
+    D = 297.8501921 + 445267.1114034 * T - 0.0018819 * T * T + T * T * T / 545868.0
+
+    # 转为弧度
+    M_r = math.radians(M % 360)
+    Mp_r = math.radians(Mp % 360)
+    F_r = math.radians(F % 360)
+    D_r = math.radians(D % 360)
+
+    # 主要经度修正项（取前20项，单位：0.000001°）
+    corrections = [
+        6288774 * math.sin(Mp_r),
+        1274027 * math.sin(2 * D_r - Mp_r),
+        658314  * math.sin(2 * D_r),
+        213618  * math.sin(2 * Mp_r),
+        -185116 * math.sin(M_r),
+        -114332 * math.sin(2 * F_r),
+        58793   * math.sin(2 * D_r - 2 * Mp_r),
+        57066   * math.sin(2 * D_r - M_r - Mp_r),
+        53322   * math.sin(2 * D_r + Mp_r),
+        45758   * math.sin(2 * D_r - M_r),
+        -40923  * math.sin(M_r - Mp_r),
+        -34720  * math.sin(D_r),
+        -30383  * math.sin(M_r + Mp_r),
+        15327   * math.sin(2 * D_r - 2 * F_r),
+        -12528  * math.sin(Mp_r + 2 * F_r),
+        10980   * math.sin(Mp_r - 2 * F_r),
+        10675   * math.sin(4 * D_r - Mp_r),
+        10034   * math.sin(3 * Mp_r),
+        8548    * math.sin(4 * D_r - 2 * Mp_r),
+        -7888   * math.sin(2 * D_r + M_r - Mp_r),
+    ]
+    lon_correction = sum(corrections) / 1000000.0  # 转换为度
+
+    moon_lon = (L0 + lon_correction) % 360
+    return moon_lon
+
+
+def get_moon_sign(year, month, day, hour=12, minute=0):
+    """
+    P2-A: 计算月亮星座。
+    返回: (星座名, 星座内度数, 是否边界附近, 月球黄经)
+    边界附近（±3°）时建议提示"建议用专业软件确认"。
+    """
+    jd = gregorian_to_jd(year, month, day, hour, minute)
+    jd_ut = jd - 8.0 / 24.0
+    lon = _moon_longitude(jd_ut)
+    sign_idx = int(lon // 30) % 12
+    degree_in_sign = lon % 30
+    near_boundary = degree_in_sign < 3.0 or degree_in_sign > 27.0
+    sign_name = ZODIAC_ORDER[sign_idx]
+    return sign_name, round(degree_in_sign, 1), near_boundary, round(lon, 2)
+
+
+# ============================================================
+# 上升星座 —— 基于出生地恒星时 + 黄道交角
+# ============================================================
+
+# 主要城市经纬度（纬度N正，经度E正）
+CITY_COORDS = {
+    "北京": (39.9042, 116.4074),
+    "上海": (31.2304, 121.4737),
+    "广州": (23.1291, 113.2644),
+    "深圳": (22.5431, 114.0579),
+    "成都": (30.5728, 104.0668),
+    "重庆": (29.5630, 106.5516),
+    "杭州": (30.2741, 120.1551),
+    "南京": (32.0603, 118.7969),
+    "武汉": (30.5928, 114.3055),
+    "西安": (34.3416, 108.9398),
+    "天津": (39.3434, 117.3616),
+    "长沙": (28.2282, 112.9388),
+    "郑州": (34.7466, 113.6254),
+    "沈阳": (41.8057, 123.4315),
+    "哈尔滨": (45.8038, 126.5349),
+    "长春": (43.8171, 125.3235),
+    "济南": (36.6512, 117.1201),
+    "合肥": (31.8206, 117.2272),
+    "昆明": (25.0389, 102.7183),
+    "南宁": (22.8170, 108.3665),
+    "贵阳": (26.6470, 106.6302),
+    "福州": (26.0745, 119.2965),
+    "厦门": (24.4798, 118.0894),
+    "南昌": (28.6820, 115.8579),
+    "太原": (37.8706, 112.5489),
+    "石家庄": (38.0428, 114.5149),
+    "呼和浩特": (40.8426, 111.7496),
+    "乌鲁木齐": (43.8256, 87.6168),
+    "拉萨": (29.6625, 91.1322),
+    "西宁": (36.6232, 101.7804),
+    "银川": (38.4872, 106.2309),
+    "兰州": (36.0611, 103.8343),
+    "海口": (20.0440, 110.1999),
+    "三亚": (18.2524, 109.5117),
+    "香港": (22.3193, 114.1694),
+    "台北": (25.0330, 121.5654),
+    "澳门": (22.1987, 113.5439),
+    # 国际主要城市
+    "东京": (35.6762, 139.6503),
+    "首尔": (37.5665, 126.9780),
+    "新加坡": (1.3521, 103.8198),
+    "纽约": (40.7128, -74.0060),
+    "洛杉矶": (34.0522, -118.2437),
+    "伦敦": (51.5074, -0.1278),
+    "巴黎": (48.8566, 2.3522),
+    "悉尼": (-33.8688, 151.2093),
+}
+
+
+def calc_ascendant(year, month, day, hour, minute, lat, lon_deg):
+    """
+    计算上升星座（Ascendant）。
+    基于出生地本地恒星时（Local Sidereal Time）与黄道交点。
+    使用整宫制（Whole Sign Houses）。
+    
+    lat: 出生地纬度（北纬为正）
+    lon_deg: 出生地东经（东经为正）
+    返回: (上升星座名, 上升黄经度数, 是否边界附近)
+    """
+    jd = gregorian_to_jd(year, month, day, hour, minute)
+    jd_ut = jd - 8.0 / 24.0  # 北京时间→UT
+
+    # 格林尼治恒星时（度）
+    T = (jd_ut - 2451545.0) / 36525.0
+    theta0 = 280.46061837 + 360.98564736629 * (jd_ut - 2451545.0) \
+             + 0.000387933 * T * T - T * T * T / 38710000.0
+    theta0 = theta0 % 360
+
+    # 本地恒星时（加经度）
+    lst = (theta0 + lon_deg) % 360
+
+    # 黄道斜角（obliquity of ecliptic）
+    eps = 23.439291111 - 0.013004167 * T - 0.0000001639 * T * T + 0.0000005036 * T * T * T
+    eps_r = math.radians(eps)
+    lat_r = math.radians(lat)
+    lst_r = math.radians(lst)
+
+    # 上升点黄经（Ascendant longitude）
+    asc_lon = math.degrees(math.atan2(
+        math.cos(lst_r),
+        -(math.sin(lst_r) * math.cos(eps_r) + math.tan(lat_r) * math.sin(eps_r))
+    )) % 360
+
+    sign_idx = int(asc_lon // 30) % 12
+    degree_in_sign = asc_lon % 30
+    near_boundary = degree_in_sign < 2.0 or degree_in_sign > 28.0
+    sign_name = ZODIAC_ORDER[sign_idx]
+    return sign_name, round(asc_lon, 2), near_boundary
+
+
+def get_ascendant_by_city(year, month, day, hour, minute, city):
+    """通过城市名查经纬度，计算上升星座。返回 None 如果城市不在库中。"""
+    coords = CITY_COORDS.get(city)
+    if not coords:
+        return None, None, None
+    lat, lon_deg = coords
+    return calc_ascendant(year, month, day, hour, minute, lat, lon_deg)
+
+
+# ============================================================
+# P1-B: 紫微斗数 —— 完整安星（14主星 + 辅星 + 四化 + 大限）
+# ============================================================
+
+# 14颗主星名称
+ZIWEI_STARS = ["紫微", "天机", "太阳", "武曲", "天同", "廉贞",
+               "天府", "太阴", "贪狼", "巨门", "天相", "天梁", "七杀", "破军"]
+
+# 紫微星安星表
+# 格式：{五行局数: {余数: (宫位地支索引的偏移规律)}}
+# 算法：农历日 ÷ 局数，得商q和余数r
+#       先从寅宫(idx=2)顺数q*局数步，再按余数查偏移
+# 实际采用更直接的查表法：给定五行局和农历生日，查紫微所在宫位（相对子宫的地支索引）
+# 此表基于《紫微斗数全书》安紫微法：
+#   水二局：1→申，2→子
+#   木三局：1→亥，2→卯，3→未（循环）
+#   金四局：1→寅，2→午，3→戌，4→（进位）
+#   土五局：1→丑，2→巳，3→酉，4→（进位），5→（进位）
+#   火六局：1→子，2→辰，3→申，4→子（重），5→辰（重），6→（进位）
+# 完整实现如下：
+
+def _get_ziwei_zhi_idx(lunar_day, wuxing_ju_num):
+    """
+    安紫微星：返回紫微星所在宫位的地支索引（0=子，...，11=亥）。
+    基于《紫微斗数全书》算法：
+      1. lunar_day ÷ 局数 = 商(q) 余 余数(r)
+      2. 若 r=0，紫微在「以寅（idx=2）为起点顺数 q-1 个局数」步所在宫
+         实际：余数0时，紫微 = 寅 + (q-1)*局数  但不超过12宫循环
+      3. 若 r≠0，起点 = 寅 + q*局数，再逆数r步
+    注：此处"逆数"是指从起点宫位倒退，即地支索引减小方向。
+    """
+    q, r = divmod(lunar_day, wuxing_ju_num)
+    base = 2  # 寅 = DI_ZHI index 2
+    if r == 0:
+        # 整除：紫微 = 寅 + (q-1)*局数（以12为模）
+        ziwei_idx = (base + (q - 1) * wuxing_ju_num) % 12
+    else:
+        # 不整除：起点 = 寅 + q*局数，再逆退r步
+        start = (base + q * wuxing_ju_num) % 12
+        ziwei_idx = (start - r) % 12
+    return ziwei_idx
+
+
+def _place_ziwei_system(ziwei_idx):
+    """
+    安紫微系主星：以紫微所在宫为基点，顺/逆布其余各星。
+    返回 {星名: 地支索引} 字典。
+    紫微系：紫微(0)、天机(-1逆)、太阳(+2顺)、武曲(+3)、天同(+4)、廉贞(+7)
+    """
+    result = {}
+    offsets = {
+        "紫微": 0,
+        "天机": -1,
+        "太阳": 2,
+        "武曲": 3,
+        "天同": 4,
+        "廉贞": 7,
+    }
+    for star, off in offsets.items():
+        result[star] = (ziwei_idx + off) % 12
+    return result
+
+
+def _place_tianfu_system(ziwei_idx):
+    """
+    安天府系主星：天府位置 = (14 - 紫微地支索引) % 12（对宫关系的斗数公式）。
+    天府系：天府(0)、太阴(+1)、贪狼(+2)、巨门(+3)、天相(+4)、天梁(+5)、七杀(+6)、破军(+10)
+    """
+    # 天府与紫微的地支位置关系：两者之和 = 14（相当于卯和子中间的对称点在寅午之间）
+    # 标准公式：天府 = (14 - 紫微索引) % 12
+    tianfu_idx = (14 - ziwei_idx) % 12
+    result = {}
+    offsets = {
+        "天府": 0,
+        "太阴": 1,
+        "贪狼": 2,
+        "巨门": 3,
+        "天相": 4,
+        "天梁": 5,
+        "七杀": 6,
+        "破军": 10,
+    }
+    for star, off in offsets.items():
+        result[star] = (tianfu_idx + off) % 12
+    return result
+
+
+def _place_auxiliary_stars(year_gan, year_zhi, lunar_month, lunar_day, hour_float, gender):
+    """
+    安六吉星、文昌文曲：基于出生年支/月/日/时。
+    返回 {星名: 地支索引} 字典。
+    """
+    result = {}
+    year_zhi_idx = DI_ZHI.index(year_zhi)
+    hour_idx = get_shichen(hour_float)
+    year_gan_idx = TIAN_GAN.index(year_gan)
+
+    # 文昌：由时支起，从戌年起酉，逆布
+    # 规则：子年文昌在酉，丑年申，寅年未...（逐年逆退）
+    # 文昌 = (酉idx - 年支idx) % 12 = (9 - year_zhi_idx) % 12
+    result["文昌"] = (9 - year_zhi_idx) % 12
+
+    # 文曲：子年文曲在辰，丑年巳...（逐年顺进）
+    # 文曲 = (辰idx + 年支idx) % 12 = (4 + year_zhi_idx) % 12
+    result["文曲"] = (4 + year_zhi_idx) % 12
+
+    # 左辅：农历三月(辰)起辰，顺布
+    # 左辅 = (辰idx + 月份 - 3) % 12 = (4 + lunar_month - 3) % 12
+    result["左辅"] = (4 + lunar_month - 3) % 12
+
+    # 右弼：农历九月(戌)起戌，逆布
+    # 右弼 = (戌idx - (月份 - 9)) % 12 = (10 - lunar_month + 9) % 12 = (19 - lunar_month) % 12
+    result["右弼"] = (19 - lunar_month) % 12
+
+    # 天魁：由年干决定，甲戊庚→丑，乙己→子，丙丁→亥，辛→午，壬癸→卯
+    _kui_map = {
+        "甲": 1, "戊": 1, "庚": 1,  # 丑=1
+        "乙": 0, "己": 0,            # 子=0
+        "丙": 11, "丁": 11,          # 亥=11
+        "辛": 6,                     # 午=6
+        "壬": 3, "癸": 3,            # 卯=3
+    }
+    result["天魁"] = _kui_map.get(year_gan, 0)
+
+    # 天钺：甲戊庚→未，乙己→申，丙丁→酉，辛→寅，壬癸→巳
+    _yue_map = {
+        "甲": 7, "戊": 7, "庚": 7,  # 未=7
+        "乙": 8, "己": 8,            # 申=8
+        "丙": 9, "丁": 9,            # 酉=9
+        "辛": 2,                     # 寅=2
+        "壬": 5, "癸": 5,            # 巳=5
+    }
+    result["天钺"] = _yue_map.get(year_gan, 0)
+
+    # 禄存：甲→寅，乙→卯，丙戊→巳，丁己→午，庚→申，辛→酉，壬→亥，癸→子
+    _lvcun_map = {
+        "甲": 2, "乙": 3, "丙": 5, "丁": 6,
+        "戊": 5, "己": 6, "庚": 8, "辛": 9,
+        "壬": 11, "癸": 0,
+    }
+    result["禄存"] = _lvcun_map.get(year_gan, 0)
+
+    # 擎羊：禄存顺数1位（与禄存相差1）
+    result["擎羊"] = (_lvcun_map.get(year_gan, 0) + 1) % 12
+
+    # 陀罗：禄存逆数1位
+    result["陀罗"] = (_lvcun_map.get(year_gan, 0) - 1) % 12
+
+    # 火星：依年支起宫+时支推算
+    # 寅午戌→丑，申子辰→寅，巳酉丑→卯，亥卯未→酉
+    _huoxing_base = {
+        "寅": 1, "午": 1, "戌": 1,
+        "申": 2, "子": 2, "辰": 2,
+        "巳": 3, "酉": 3, "丑": 3,
+        "亥": 9, "卯": 9, "未": 9,
+    }
+    base = _huoxing_base.get(year_zhi, 2)
+    result["火星"] = (base + hour_idx) % 12
+
+    # 铃星：同火星规则，但起宫不同
+    _lingxing_base = {
+        "寅": 2, "午": 2, "戌": 2,
+        "申": 3, "子": 3, "辰": 3,
+        "巳": 10, "酉": 10, "丑": 10,
+        "亥": 9, "卯": 9, "未": 9,
+    }
+    base2 = _lingxing_base.get(year_zhi, 3)
+    result["铃星"] = (base2 + hour_idx) % 12
+
+    return result
+
+
+# 四化表（禄权科忌）
+SI_HUA = {
+    "甲": {"化禄": "廉贞", "化权": "破军", "化科": "武曲", "化忌": "太阳"},
+    "乙": {"化禄": "天机", "化权": "天梁", "化科": "紫微", "化忌": "太阴"},
+    "丙": {"化禄": "天同", "化权": "天机", "化科": "文昌", "化忌": "廉贞"},
+    "丁": {"化禄": "太阴", "化权": "天同", "化科": "天机", "化忌": "巨门"},
+    "戊": {"化禄": "贪狼", "化权": "太阴", "化科": "右弼", "化忌": "天机"},
+    "己": {"化禄": "武曲", "化权": "贪狼", "化科": "天梁", "化忌": "文曲"},
+    "庚": {"化禄": "太阳", "化权": "武曲", "化科": "太阴", "化忌": "天同"},
+    "辛": {"化禄": "巨门", "化权": "太阳", "化科": "文曲", "化忌": "文昌"},
+    "壬": {"化禄": "天梁", "化权": "紫微", "化科": "左辅", "化忌": "武曲"},
+    "癸": {"化禄": "破军", "化权": "巨门", "化科": "太阴", "化忌": "贪狼"},
+}
+
+# 主星性格/宫位解读（简版）
+STAR_PERSONALITY = {
+    "紫微": {"性格": "领袖气质、威严尊贵，有统御欲，重视地位与权威", "适合": "管理、政界、高端决策", "能量": "中性"},
+    "天机": {"性格": "智谋多变、思维灵活，善于谋划，喜欢研究", "适合": "策划、研究、科技", "能量": "中性"},
+    "太阳": {"性格": "热情慷慨、博爱外向，喜欢发光发热，重名誉", "适合": "公关、教育、政治", "能量": "阳"},
+    "武曲": {"性格": "刚毅果断、务实重财，意志坚定，不善言辞但行动力强", "适合": "金融、军事、实业", "能量": "阳"},
+    "天同": {"性格": "温和随和、享乐主义，追求平静生活，福气厚重", "适合": "服务业、艺术、福利", "能量": "阴"},
+    "廉贞": {"性格": "多才多艺、个性强烈，有桃花，冲劲足但感情复杂", "适合": "艺术、外交、娱乐", "能量": "阴"},
+    "天府": {"性格": "保守稳重、聚财能力强，注重物质积累，德望高", "适合": "财务、储蓄、管理", "能量": "中性"},
+    "太阴": {"性格": "细腻敏感、直觉强，阴柔内敛，对家庭极重视", "适合": "文学、艺术、房产", "能量": "阴"},
+    "贪狼": {"性格": "多欲多才、桃花旺，善于交际，喜欢享受和追求", "适合": "公关、娱乐、销售", "能量": "中性"},
+    "巨门": {"性格": "口才出众、分析力强，善于挑剔和辩论，口舌是非多", "适合": "律师、媒体、教育", "能量": "阴"},
+    "天相": {"性格": "仁慈宽厚、协调能力强，善于辅佐，重规则", "适合": "行政、人事、法律", "能量": "中性"},
+    "天梁": {"性格": "正直老成、爱管闲事，有宗教缘，精于化解危机", "适合": "医疗、宗教、调解", "能量": "阳"},
+    "七杀": {"性格": "霸气刚烈、独立自主，冲劲强但孤独感重，变动多", "适合": "军事、竞技、创业", "能量": "阳"},
+    "破军": {"性格": "改革破旧、大起大落，不循常规，开创力极强但耗损大", "适合": "改革、创新、冒险事业", "能量": "阳"},
+}
+
+# 十二宫位解读（简版）
+GONG_MEANING = {
+    "命宫": "主性格、气质、人生总体格局",
+    "兄弟宫": "主手足关系、朋友缘分、合伙关系",
+    "夫妻宫": "主感情、婚姻、伴侣特质",
+    "子女宫": "主子女缘、创造力、部属关系",
+    "财帛宫": "主赚钱能力、财运、理财方式",
+    "疾厄宫": "主健康、身体弱点、意外",
+    "迁移宫": "主出行、外出运、人际贵人",
+    "交友宫": "主朋友、合伙人质量、社交圈",
+    "官禄宫": "主事业、工作环境、仕途",
+    "田宅宫": "主房产、家庭环境、祖业",
+    "福德宫": "主内心世界、精神享受、福气厚薄",
+    "父母宫": "主父母缘、长辈关系、文件官司",
+}
+
+# 常见紫微格局（自动识别）
+def identify_ziwei_patterns(star_map, ming_gong_idx, gong_names):
+    """
+    自动识别10个常见紫微格局。
+    star_map: {星名: 地支索引}
+    ming_gong_idx: 命宫地支索引
+    gong_names: 宫位名 → 地支索引 映射
+    返回识别到的格局列表 [(格局名, 描述)]
+    """
+    patterns = []
+
+    # 反查：地支索引 → 落在哪个宫位
+    idx_to_gong = {v: k for k, v in gong_names.items()}
+
+    def star_in_gong(star, gong):
+        """判断某星是否在某宫"""
+        if star not in star_map:
+            return False
+        star_idx = star_map[star]
+        target_idx = gong_names.get(gong)
+        return star_idx == target_idx
+
+    def stars_same_gong(star1, star2):
+        """两星是否同宫"""
+        if star1 not in star_map or star2 not in star_map:
+            return False
+        return star_map[star1] == star_map[star2]
+
+    # 1. 紫府同宫
+    if stars_same_gong("紫微", "天府"):
+        patterns.append(("紫府同宫", "权贵之格，领导力天赋极强，一生有地位，贵人多，适合管理与仕途"))
+
+    # 2. 日月并明（太阳在卯/辰，太阴在酉/戌，各居旺地）
+    sun_idx = star_map.get("太阳", -1)
+    moon_idx = star_map.get("太阴", -1)
+    if sun_idx in [3, 4] and moon_idx in [9, 10]:
+        patterns.append(("日月并明", "太阳太阴各居旺位，光明之格，贵显一方，文名远播"))
+
+    # 3. 武曲守命（武曲在命宫）
+    if star_in_gong("武曲", "命宫"):
+        patterns.append(("武曲守命", "刚毅果断，实干型领袖，财运旺盛，靠实力建功立业"))
+
+    # 4. 廉贞·天府（同宫）
+    if stars_same_gong("廉贞", "天府"):
+        patterns.append(("廉府同宫", "才华与资产兼备，多才多艺且聚财，但感情较复杂"))
+
+    # 5. 七杀·破军（同宫或对宫）
+    qisha_idx = star_map.get("七杀", -1)
+    pojun_idx = star_map.get("破军", -1)
+    if qisha_idx >= 0 and pojun_idx >= 0:
+        if abs(qisha_idx - pojun_idx) in [0, 6]:
+            patterns.append(("杀破狼格", "七杀/破军/贪狼三方会照，开创型命格，大起大落，适合创业变革，非守成之人"))
+
+    # 6. 贪狼在命（桃花格）
+    if star_in_gong("贪狼", "命宫"):
+        patterns.append(("贪狼守命", "桃花旺盛，多才多艺，社交能力强，但感情复杂，需防耽于享乐"))
+
+    # 7. 天机·太阴同守
+    if stars_same_gong("天机", "太阴"):
+        patterns.append(("机月同梁格", "天机太阴同宫，才智过人，敏感细腻，适合谋略与辅佐，善于在体制内发展"))
+
+    # 8. 巨门守命（口才格）
+    if star_in_gong("巨门", "命宫"):
+        patterns.append(("巨门守命", "口才出众，善于分析辩论，宜从事言论、法律、教育，口舌是非需注意"))
+
+    # 9. 太阳守命（男命吉，女命慎）
+    if star_in_gong("太阳", "命宫"):
+        patterns.append(("太阳守命", "热情博爱，喜欢发光，名声显赫；男命贵显，女命则需注意劳碌"))
+
+    # 10. 紫微守命
+    if star_in_gong("紫微", "命宫"):
+        patterns.append(("紫微守命", "天生领袖，威严尊贵，有统御之命，但要防孤高和固执"))
+
+    return patterns
+
+
+def calc_ziwei_full(year_gan, year_zhi, lunar_month, lunar_day, hour, gender, ming_gong_idx=None):
+    """
+    P1-B: 完整紫微斗数排盘。
+    包含：命宫/身宫、14主星安星、六吉六煞、四化飞星、大限序列、格局识别。
+    """
+    # —— 基础宫位计算 ——
     month_gong = (DI_ZHI.index("寅") + lunar_month - 1) % 12
     hour_idx = get_shichen(hour)
-    ming_gong_idx = (month_gong - hour_idx) % 12
+    if ming_gong_idx is None:
+        ming_gong_idx = (month_gong - hour_idx) % 12
     shen_gong_idx = (month_gong + hour_idx) % 12
     ming_gong = DI_ZHI[ming_gong_idx]
     shen_gong = DI_ZHI[shen_gong_idx]
 
+    # 十二宫位排布（命宫起逆排）
     twelve_gong_names = ["命宫", "兄弟宫", "夫妻宫", "子女宫", "财帛宫", "疾厄宫",
                          "迁移宫", "交友宫", "官禄宫", "田宅宫", "福德宫", "父母宫"]
-    gong_map = {}
+    gong_map = {}   # 宫位名 → 地支
+    gong_idx_map = {}  # 宫位名 → 地支索引
     for i, gn in enumerate(twelve_gong_names):
         gong_zhi_idx = (ming_gong_idx - i) % 12
         gong_map[gn] = DI_ZHI[gong_zhi_idx]
+        gong_idx_map[gn] = gong_zhi_idx
 
+    # 命宫天干（五虎遁）
     year_gan_idx = TIAN_GAN.index(year_gan)
     yin_start = {0: 2, 1: 4, 2: 6, 3: 8, 4: 0, 5: 2, 6: 4, 7: 6, 8: 8, 9: 0}
     start = yin_start[year_gan_idx]
     ming_gan_idx = (start + (ming_gong_idx - 2) % 12) % 10
     ming_gan = TIAN_GAN[ming_gan_idx]
 
+    # 五行局
     wu_xing_ju_map = {
         ("甲", "子"): ("金四局", 4), ("乙", "丑"): ("金四局", 4),
         ("丙", "寅"): ("火六局", 6), ("丁", "卯"): ("火六局", 6),
@@ -672,10 +1245,11 @@ def calc_ziwei(year_gan, year_zhi, lunar_month, lunar_day, hour, gender):
         ("庚", "申"): ("木三局", 3), ("辛", "酉"): ("木三局", 3),
         ("壬", "戌"): ("金四局", 4), ("癸", "亥"): ("金四局", 4),
     }
-
     ju_info = wu_xing_ju_map.get((ming_gan, ming_gong), ("未知", 0))
     wu_xing_ju = ju_info[0]
+    wuxing_ju_num = ju_info[1]
 
+    # 命主/身主
     ming_zhu_map = {
         "子": "贪狼", "丑": "巨门", "寅": "禄存", "卯": "文曲",
         "辰": "廉贞", "巳": "武曲", "午": "破军", "未": "武曲",
@@ -689,28 +1263,196 @@ def calc_ziwei(year_gan, year_zhi, lunar_month, lunar_day, hour, gender):
     ming_zhu = ming_zhu_map.get(ming_gong, "未知")
     shen_zhu = shen_zhu_map.get(year_zhi, "未知")
 
+    # 大运方向
     year_yy = YIN_YANG_GAN[year_gan]
     if gender == "男":
-        da_yun = "顺行" if year_yy == "阳" else "逆行"
+        da_yun_forward = (year_yy == "阳")
     else:
-        da_yun = "逆行" if year_yy == "阳" else "顺行"
+        da_yun_forward = (year_yy == "阴")
+    da_yun_direction = "顺行" if da_yun_forward else "逆行"
 
+    # 身宫落在哪个宫位
     shen_in_gong = ""
     for gn, gz in gong_map.items():
         if gz == shen_gong:
             shen_in_gong = gn
             break
 
+    # —— P1-B: 14主星安星 ——
+    star_map = {}  # {星名: 地支索引}
+    if wuxing_ju_num > 0:
+        ziwei_idx = _get_ziwei_zhi_idx(lunar_day, wuxing_ju_num)
+        ziwei_sys = _place_ziwei_system(ziwei_idx)
+        tianfu_sys = _place_tianfu_system(ziwei_idx)
+        star_map.update(ziwei_sys)
+        star_map.update(tianfu_sys)
+    else:
+        ziwei_idx = 0
+
+    # 辅星
+    aux_stars = _place_auxiliary_stars(year_gan, year_zhi, lunar_month, lunar_day, hour, gender)
+    star_map.update(aux_stars)
+
+    # —— P2-B: 四化飞星 ——
+    sihua = SI_HUA.get(year_gan, {})
+    sihua_locations = {}
+    for hua_type, star_name in sihua.items():
+        if star_name in star_map:
+            zhi_idx = star_map[star_name]
+            zhi = DI_ZHI[zhi_idx]
+            # 找到该地支对应的宫位
+            gong_name = "未知宫"
+            for gn, gz in gong_map.items():
+                if gz == zhi:
+                    gong_name = gn
+                    break
+            sihua_locations[hua_type] = {
+                "星曜": star_name,
+                "所在地支": zhi,
+                "所在宫位": gong_name,
+            }
+
+    # 主星 → 宫位名称 映射
+    star_to_gong = {}
+    for star, sidx in star_map.items():
+        zhi = DI_ZHI[sidx]
+        for gn, gz in gong_map.items():
+            if gz == zhi:
+                star_to_gong[star] = gn
+                break
+
+    # 按宫位聚合星曜（用于输出表格）
+    gong_stars = {gn: [] for gn in twelve_gong_names}
+    for star, sidx in star_map.items():
+        zhi = DI_ZHI[sidx]
+        for gn, gz in gong_map.items():
+            if gz == zhi:
+                gong_stars[gn].append(star)
+                break
+
+    # 命宫主星及解读
+    ming_gong_stars = gong_stars.get("命宫", [])
+    ming_gong_reading = []
+    for s in ming_gong_stars:
+        if s in STAR_PERSONALITY:
+            ming_gong_reading.append(f"{s}：{STAR_PERSONALITY[s]['性格']}")
+
+    # 财帛宫/官禄宫主星
+    cai_stars = gong_stars.get("财帛宫", [])
+    guan_stars = gong_stars.get("官禄宫", [])
+
+    # —— P2-B: 大限推算 ——
+    da_yun_list = []
+    if wuxing_ju_num > 0:
+        start_age = wuxing_ju_num
+        direction = 1 if da_yun_forward else -1
+        for i in range(12):
+            age_start = start_age + i * 10
+            age_end = age_start + 9
+            limit_gong_idx = (ming_gong_idx + direction * i) % 12
+            limit_gong_zhi = DI_ZHI[limit_gong_idx]
+            # 该大限宫位名
+            limit_gong_name = ""
+            for gn, gidx in gong_idx_map.items():
+                if gidx == limit_gong_idx:
+                    limit_gong_name = gn
+                    break
+            limit_stars = gong_stars.get(limit_gong_name, [])
+            da_yun_list.append({
+                "序号": i + 1,
+                "年龄范围": f"{age_start}–{age_end}岁",
+                "宫位": limit_gong_name,
+                "地支": limit_gong_zhi,
+                "主星": limit_stars,
+            })
+
+    # —— 格局识别 ——
+    patterns = identify_ziwei_patterns(star_map, ming_gong_idx, gong_idx_map)
+
     return {
         "命宫": f"{ming_gan}{ming_gong}宫",
         "身宫": f"{shen_gong}宫（落在{shen_in_gong}）" if shen_in_gong else f"{shen_gong}宫",
         "五行局": wu_xing_ju,
+        "五行局数": wuxing_ju_num,
         "命主": ming_zhu,
         "身主": shen_zhu,
-        "大运方向": da_yun,
+        "大运方向": da_yun_direction,
         "十二宫": gong_map,
+        "十二宫星曜": gong_stars,
+        "十四主星落宫": {s: DI_ZHI[idx] for s, idx in star_map.items() if s in ZIWEI_STARS},
+        "辅星落宫": {s: DI_ZHI[idx] for s, idx in star_map.items() if s not in ZIWEI_STARS},
+        "四化飞星": sihua_locations,
+        "大限序列": da_yun_list,
+        "命宫主星": ming_gong_stars,
+        "命宫解读": ming_gong_reading,
+        "财帛宫主星": cai_stars,
+        "官禄宫主星": guan_stars,
+        "格局识别": patterns,
         "阴阳": f"年干{year_gan}为{year_yy}",
+        "命宫地支索引": ming_gong_idx,
     }
+
+
+# 保留旧版接口以向后兼容
+def calc_ziwei(year_gan, year_zhi, lunar_month, lunar_day, hour, gender):
+    """向后兼容接口，调用新版 calc_ziwei_full。"""
+    return calc_ziwei_full(year_gan, year_zhi, lunar_month, lunar_day, hour, gender)
+
+
+# ============================================================
+# 三星组合解读
+# ============================================================
+
+def _zodiac_combo_reading(sun_sign, moon_sign, rising_sign=None):
+    """
+    生成太阳×月亮（×上升）的三星组合解读文字。
+    """
+    sun_elem = ZODIAC_INFO.get(sun_sign, {}).get("元素", "")
+    moon_elem = ZODIAC_INFO.get(moon_sign, {}).get("元素", "")
+
+    # 元素组合性质
+    elem_combo = {
+        ("火", "火"): "热情加倍，行动力极强，但容易冲动过头，需要水/土来接地",
+        ("火", "土"): "冲劲配稳重，能开创也能守成，外热内稳型",
+        ("火", "风"): "充满活力与想法，思维快速，表达热情，有时停不下来",
+        ("火", "水"): "表面热情内心细腻，情绪反差大，感情世界复杂而深刻",
+        ("土", "火"): "稳重外表下有冲劲，慢热但一旦决定就全力以赴",
+        ("土", "土"): "务实到底，安全感极强，但可能过于保守，难以变通",
+        ("土", "风"): "脚踏实地又思维活跃，能将想法落地，实干派中的聪明人",
+        ("土", "水"): "稳定而感性，善于积累情感资产，对家庭极度重视",
+        ("风", "火"): "思维飞速加行动力，创意无限，但注意力分散是挑战",
+        ("风", "土"): "聪明头脑配务实心态，善于将理念转化为实际收益",
+        ("风", "风"): "思维极其活跃，沟通能力超强，但容易分心和缺乏深度",
+        ("风", "水"): "感性与理性交织，既有直觉又能分析，情感敏感度高",
+        ("水", "火"): "感情深沉配冲动行事，内心汹涌外表平静，偶尔爆发",
+        ("水", "土"): "情感稳定，记忆力强，善于维系长期关系，占有欲较重",
+        ("水", "风"): "情绪通过言语和思考消化，直觉与理性并存，边界感模糊",
+        ("水", "水"): "情感世界极深，直觉超群，共情能力强，但容易情绪淹没",
+    }
+    combo_key = (sun_elem, moon_elem)
+    combo_desc = elem_combo.get(combo_key, "多元能量交织，需结合具体星座深入分析")
+
+    sun_info = ZODIAC_INFO.get(sun_sign, {})
+    moon_keywords = _MOON_SIGN_KEYWORDS.get(moon_sign, "")
+    rising_desc = _RISING_SIGN_KEYWORDS.get(rising_sign, "") if rising_sign else ""
+
+    lines = [
+        f"**太阳×月亮元素组合（{sun_elem}×{moon_elem}）**：{combo_desc}",
+        f"**太阳星座（{sun_sign}）** 决定外在行为方式：{sun_info.get('特质', '')}",
+        f"**月亮星座（{moon_sign}）** 决定内在情绪底色：{moon_keywords}",
+    ]
+    if rising_sign:
+        lines.append(f"**上升星座（{rising_sign}）** 决定他人眼中的第一印象：{rising_desc}")
+        lines.append(
+            f"**三星综合**：以{sun_sign}的方式行动、以{moon_sign}的方式感受、"
+            f"以{rising_sign}的面貌示人，三者的张力构成你独特的内外反差。"
+        )
+    else:
+        lines.append(
+            f"**双星综合**：以{sun_sign}的方式行动、以{moon_sign}的方式感受，"
+            f"两者的张力构成你内外世界的核心矛盾与动力。"
+        )
+    return "\n".join(lines)
 
 
 # ============================================================
@@ -723,9 +1465,10 @@ def analyze_person(member):
     solar_date = member["solar_date"]
     birth_time = member["birth_time"]
     bazi = list(member["bazi"]) if member.get("bazi") else [None, None, None, None]
-    lunar = member["lunar"]
-    lunar_month = lunar["month"]
-    lunar_day = lunar["day"]
+    lunar = member.get("lunar", {})
+    lunar_month = lunar.get("month", 1)
+    lunar_day = lunar.get("day", 1)
+    birth_city = member.get("birth_city", "")
 
     # 解析时间
     parts = birth_time.split(":")
@@ -737,10 +1480,9 @@ def analyze_person(member):
     solar_parts = solar_date.split("-")
     s_year, s_month, s_day = int(solar_parts[0]), int(solar_parts[1]), int(solar_parts[2])
 
-    # 自动计算完整四柱（基于天文算法）
+    # 自动计算完整四柱
     computed = calc_four_pillars(s_year, s_month, s_day, s_hour, s_minute)
 
-    # 与输入的bazi进行校验，自动修正差异
     pillar_names = ["年柱", "月柱", "日柱", "时柱"]
     for i in range(4):
         if bazi[i] is None:
@@ -749,7 +1491,6 @@ def analyze_person(member):
             print(f"⚠️ {name}: 输入{pillar_names[i]}「{bazi[i]}」与计算结果「{computed[i]}」不一致，已自动修正")
             bazi[i] = computed[i]
 
-    # 基本信息
     year_gz = bazi[0]
     day_gz = bazi[2]
     day_gan = day_gz[0]
@@ -783,33 +1524,58 @@ def analyze_person(member):
     max_wx = max(wx, key=wx.get)
     min_wx = min(wx, key=wx.get)
 
-    # 出生季节
+    # 季节
     month_zhi = bazi[1][1]
     season = SEASON_MAP.get(month_zhi, "")
 
     # 称骨
     chenggu = calc_chenggu(year_gz, lunar_month, lunar_day, hour_float)
 
-    # 星座
-    solar_parts = solar_date.split("-")
-    solar_month = int(solar_parts[1])
-    solar_day = int(solar_parts[2])
-    zodiac, zodiac_info = get_zodiac(solar_month, solar_day)
+    # P1-A: 精确太阳星座
+    sun_sign, zodiac_info, sun_lon, sun_near_boundary = get_zodiac_precise(
+        s_year, s_month, s_day, s_hour, s_minute
+    )
+    zodiac_boundary_note = "⚠️ 太阳处于星座边界附近，建议用专业软件确认" if sun_near_boundary else ""
 
-    # 紫微
-    ziwei = calc_ziwei(year_gz[0], year_gz[1], lunar_month, lunar_day, hour_float, gender)
+    # P2-A: 月亮星座
+    moon_sign, moon_deg_in_sign, moon_near_boundary, moon_lon = get_moon_sign(
+        s_year, s_month, s_day, s_hour, s_minute
+    )
+    moon_boundary_note = "⚠️ 月亮处于星座边界附近（±3°），建议用专业软件确认" if moon_near_boundary else ""
+
+    # 上升星座（选填城市）
+    rising_sign = None
+    rising_lon = None
+    rising_near_boundary = False
+    rising_note = ""
+    if birth_city:
+        rs, rlon, rnear = get_ascendant_by_city(s_year, s_month, s_day, s_hour, s_minute, birth_city)
+        if rs:
+            rising_sign = rs
+            rising_lon = rlon
+            rising_near_boundary = rnear
+            rising_note = "⚠️ 上升星座处于边界附近" if rnear else ""
+        else:
+            rising_note = f"⚠️ 城市「{birth_city}」不在内置库中，上升星座无法计算"
+
+    # 三星组合解读
+    astro_combo_reading = _zodiac_combo_reading(sun_sign, moon_sign, rising_sign)
+
+    # P1-B: 紫微完整排盘
+    ziwei = calc_ziwei_full(year_gz[0], year_gz[1], lunar_month, lunar_day, hour_float, gender)
 
     # 三才五格姓名测算
     wuge_result = None
     surname_len = member.get("surname_len", 1)
     try:
+        import sys, os
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from name_wuge_calc import calc_wuge
         wuge_result = calc_wuge(name, surname_len)
         if "error" in wuge_result:
             print(f"⚠️ {name}: 三才五格计算失败 - {wuge_result['error']}")
             wuge_result = None
     except ImportError:
-        # name_wuge_calc 不可用时跳过
         pass
     except Exception as e:
         print(f"⚠️ {name}: 三才五格计算异常 - {e}")
@@ -819,6 +1585,7 @@ def analyze_person(member):
         "gender": gender,
         "solar_date": solar_date,
         "birth_time": birth_time,
+        "birth_city": birth_city,
         "bazi": bazi,
         "lunar_month": lunar_month,
         "lunar_day": lunar_day,
@@ -836,9 +1603,25 @@ def analyze_person(member):
         "min_wx": min_wx,
         "season": season,
         "chenggu": chenggu,
-        "zodiac": zodiac,
+        # 星座（精确版）
+        "zodiac": sun_sign,
         "zodiac_info": zodiac_info,
+        "sun_longitude": sun_lon,
+        "zodiac_boundary_note": zodiac_boundary_note,
+        # 月亮星座
+        "moon_sign": moon_sign,
+        "moon_longitude": moon_lon,
+        "moon_deg_in_sign": moon_deg_in_sign,
+        "moon_boundary_note": moon_boundary_note,
+        # 上升星座
+        "rising_sign": rising_sign,
+        "rising_longitude": rising_lon,
+        "rising_boundary_note": rising_note,
+        # 三星组合解读
+        "astro_combo_reading": astro_combo_reading,
+        # 紫微（完整版）
         "ziwei": ziwei,
+        # 姓名
         "wuge": wuge_result,
     }
 
@@ -851,7 +1634,6 @@ def analyze_synastry(members_results):
     if len(members_results) < 2:
         return {"note": "至少需要2人才能进行合盘分析"}
 
-    # 五行合计
     group_wx = {"金": 0, "木": 0, "水": 0, "火": 0, "土": 0}
     for m in members_results:
         for w in group_wx:
@@ -860,7 +1642,6 @@ def analyze_synastry(members_results):
     balance = max(group_wx.values()) - min(group_wx.values())
     missing_group = [k for k, v in group_wx.items() if v == 0]
 
-    # 评分
     score = 0
     details = []
 
@@ -1001,7 +1782,7 @@ def analyze_synastry(members_results):
 # ============================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="综合命理测算")
+    parser = argparse.ArgumentParser(description="综合命理测算 v6.0")
     parser.add_argument("--input", required=True, help="输入JSON文件路径")
     parser.add_argument("--output", required=True, help="输出JSON文件路径")
     args = parser.parse_args()
@@ -1014,6 +1795,17 @@ def main():
         result = analyze_person(member)
         results.append(result)
         print(f"✅ {member['name']} 测算完成")
+        print(f"   四柱：{' '.join(result['bazi'])}")
+        print(f"   太阳星座：{result['zodiac']}（黄经{result['sun_longitude']}°）")
+        print(f"   月亮星座：{result['moon_sign']}（黄经{result['moon_longitude']}°）")
+        if result.get("rising_sign"):
+            print(f"   上升星座：{result['rising_sign']}")
+        print(f"   紫微命宫：{result['ziwei']['命宫']} 五行局：{result['ziwei']['五行局']}")
+        if result["ziwei"]["命宫主星"]:
+            print(f"   命宫主星：{'、'.join(result['ziwei']['命宫主星'])}")
+        if result["ziwei"]["格局识别"]:
+            for pat, desc in result["ziwei"]["格局识别"]:
+                print(f"   格局：{pat}")
 
     synastry = None
     if len(results) >= 2:
@@ -1023,6 +1815,7 @@ def main():
     output = {
         "members": results,
         "synastry": synastry,
+        "version": "6.0",
     }
 
     with open(args.output, "w", encoding="utf-8") as f:
