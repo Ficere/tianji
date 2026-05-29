@@ -370,6 +370,34 @@ combo = _zodiac_combo_reading(sun_sign, moon_sign, rising_sign)
 
 将报告保存为 Markdown 文件并分享给用户。
 
+## Example Use Cases
+
+> All examples below use fictional information for demonstration only. See `references/use-cases.md` for full walkthroughs.
+
+### Case 1 — Full individual fortune analysis
+
+Input: 陈明远 (male), 1992-03-15 14:30, born in 武汉.
+
+Output includes: Four Pillars auto-calculation, bone-weight fortune, Zi Wei chart (life palace, 14 main stars, Si Hua flying stars, major limits), zodiac analysis (sun/moon/rising), and name numerology (5 grids + Sancai + overall rating).
+
+### Case 2 — Couple synastry
+
+Input: 王志远 (male, 1988-11-23 09:15, 成都) + 李雨薇 (female, 1990-06-08 19:40, 杭州).
+
+Output includes: per-person charts, then synastry scoring: Five Elements complementarity (22/25), zodiac relations (12/20), zodiac angle (5/15), Day Master interaction (5/20), bone-weight comparison (12/15), name synastry (4/5). Total 60/100 → "Medium compatibility", with improvement suggestions.
+
+### Case 3 — Team / partnership multi-person synastry
+
+Input: 3 founders — 张子安 (1985-07-12 06:30, 北京) + 陈伟 (1987-09-05 11:00, 广州) + 刘芳 (1991-12-20 16:20, 深圳).
+
+Output includes: group Five Elements distribution (Fire notably deficient), pair-wise zodiac checks (Ox-Sheep clash flagged), total score 72/100 → "Good compatibility", with role-assignment advice.
+
+### Case 4 — Name numerology standalone
+
+Input: single name "赵子涵".
+
+Output includes: 5-grid strokes, numerology吉凶, element mapping, Sancai configuration (土金土 → 大吉), overall score 82 → "Good · Above Average", with personality and development notes.
+
 ## Important Notes
 
 - **四柱全自动计算**：脚本内置年柱、月柱、日柱、时柱的自动计算，无需手动排盘或第三方服务
