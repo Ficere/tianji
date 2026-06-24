@@ -25,6 +25,12 @@ An all-in-one Agent Skill for traditional Chinese fortune analysis. Input birth 
 | [Coze 技能商店](https://www.coze.cn/skills?skill_share_pid=7629277828386947078) | Web UI 「获取」 / click "Get" |
 
 ## 安装 / Install
+直接告诉你的agent（coze、hermes、openclaw等等）
+```txt
+请帮我安装这个技能https://github.com/Ficere/tianji
+```
+
+或者，如果你自诩专业：
 
 ```bash
 npx skills add Ficere/tianji
