@@ -384,21 +384,126 @@ def render_name_section(person: dict) -> str:
     rating_class = {"大吉": "rating-daji", "吉": "rating-ji", "中吉": "rating-zhongji",
                     "中": "rating-zhong", "小凶": "rating-xiong", "凶": "rating-xiong"}.get(rating, "")
 
+    RATING_COLOR = {"大吉": "#c9973a", "吉": "#4a7c59", "半吉": "#7a6a55", "凶": "#b5451b", "小凶": "#b5451b"}
     wuge_html = ""
     for key, label in [("tianGe","天格"), ("renGe","人格"), ("diGe","地格"), ("waiGe","外格"), ("zongGe","总格")]:
-        val = wuge.get(key, "—")
-        wuge_html += f'<div class="wuge-item"><span class="wuge-label">{label}</span><span class="wuge-val">{val}</span></div>'
+        raw = wuge.get(key, {})
+        if isinstance(raw, dict):
+            num   = raw.get("value", "—")
+            name  = raw.get("name", "")
+            gr    = raw.get("rating", "")
+            elem  = raw.get("element", "")
+        else:
+            # 兼容纯数字格式
+            num, name, gr, elem = raw, "", "", ""
+        gr_color = RATING_COLOR.get(gr, "#7a6a55")
+        wuge_html += (
+            f'<div class="wuge-item">'
+            f'<span class="wuge-label">{label}</span>'
+            f'<span class="wuge-num">{num}</span>'
+            f'<span class="wuge-name">{name}</span>'
+            f'<span class="wuge-elem">{elem}</span>'
+            f'<span class="wuge-rating" style="color:{gr_color}">{gr}</span>'
+            f'</div>'
+        )
+
+    # 三才详情
+    sancai_obj = na.get("sancai", {})
+    if isinstance(sancai_obj, dict):
+        sancai_cfg    = sancai_obj.get("config", "")
+        sancai_rating = sancai_obj.get("rating", "")
+        sancai_detail = sancai_obj.get("detail", "")
+    else:
+        sancai_cfg    = str(sancai_obj)
+        sancai_rating = ""
+        sancai_detail = ""
+    sancai_rating_color = RATING_COLOR.get(sancai_rating, "#7a6a55")
+    sancai_html = (
+        f'三才：<strong>{sancai_cfg}</strong>'
+        + (f' <span style="color:{sancai_rating_color}">({sancai_rating})</span>' if sancai_rating else "")
+        + (f'<br><small style="color:var(--color-ink-muted)">{sancai_detail}</small>' if sancai_detail else "")
+    )
+
+    # 综合评分进度条
+    overall_score = na.get("overall_score", na.get("overall_rating", ""))
+    score_bar = ""
+    if isinstance(overall_score, (int, float)):
+        score_bar = f"""
+        <div class="name-score-row">
+          <span class="name-score-label">综合评分</span>
+          <div class="name-score-bar-wrap">
+            <div class="name-score-bar" style="width:{min(overall_score,100):.0f}%"></div>
+          </div>
+          <span class="name-score-num">{overall_score:.1f}</span>
+          <span class="name-score-rating {rating_class}">{rating}</span>
+        </div>"""
+    else:
+        score_bar = f'<p><span class="name-rating {rating_class}">{rating}</span></p>'
 
     return f"""
     <section class="report-section" id="name">
       <h2 class="section-title">三才五格姓名</h2>
       <div class="name-header">
         <span class="name-strokes">{stroke_html}</span>
-        <span class="name-sancai">三才：{sancai}</span>
-        <span class="name-rating {rating_class}">{rating}</span>
       </div>
+      {score_bar}
       <div class="wuge-row">{wuge_html}</div>
+      <div class="sancai-block">{sancai_html}</div>
       <p class="analysis-text">{interp}</p>
+    </section>"""
+
+
+def render_sixdim_section(person: dict) -> str:
+    """渲染六维度评分区块：事业/财运/婚姻/健康/子女/精神"""
+    dims = person.get("six_dimensions")
+    if not dims:
+        return ""
+
+    DIM_LABELS = [
+        ("career",   "事业"),
+        ("wealth",   "财运"),
+        ("marriage", "婚姻"),
+        ("health",   "健康"),
+        ("children", "子女"),
+        ("spirit",   "精神"),
+    ]
+    # 限分100，条形颜色按分段
+    def bar_color(score, total=100):
+        pct = score / total
+        if pct >= 0.8:  return "#c9973a"
+        if pct >= 0.6:  return "#4a7c59"
+        if pct >= 0.4:  return "#7a6a55"
+        return "#b5451b"
+
+    cards_html = ""
+    for key, cn_label in DIM_LABELS:
+        d = dims.get(key)
+        if not d:
+            continue
+        score   = d.get("score", 0)
+        total   = d.get("total", 100)
+        label   = d.get("label", "")
+        comment = d.get("comment", "")
+        pct     = round(min(score / total, 1) * 100)
+        color   = bar_color(score, total)
+        cards_html += f"""
+        <div class="sixdim-card">
+          <div class="sixdim-title">{cn_label}</div>
+          <div class="sixdim-score-row">
+            <span class="sixdim-score-num">{score}</span>
+            <span class="sixdim-score-max">/{total}</span>
+            <div class="sixdim-bar-wrap">
+              <div class="sixdim-bar" style="width:{pct}%;background:{color}"></div>
+            </div>
+          </div>
+          <div class="sixdim-label" style="color:{color}">{label}</div>
+          <div class="sixdim-comment">{comment}</div>
+        </div>"""
+
+    return f"""
+    <section class="report-section" id="sixdim">
+      <h2 class="section-title">六维度评分</h2>
+      <div class="sixdim-grid">{cards_html}</div>
     </section>"""
 
 
@@ -483,6 +588,7 @@ def render_person_full(person: dict) -> str:
         render_ziwei_section(person),
         render_western_section(person),
         render_name_section(person),
+        render_sixdim_section(person),
         render_sketch_section(person),
         render_confidence_section(person),
     ])
@@ -931,8 +1037,30 @@ body {
 .rating-xiong { background: #faeaea; color: #8b2020; }
 .wuge-row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .wuge-item { display: flex; flex-direction: column; align-items: center; background: var(--color-bg-page); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 8px 12px; }
-.wuge-label { font-size: .72rem; color: var(--color-ink-muted); }
-.wuge-val   { font-size: 1.1rem; color: var(--color-ink); }
+.wuge-label  { font-size: .72rem; color: var(--color-ink-muted); margin-bottom: 2px; }
+.wuge-num    { font-size: 1.25rem; font-weight: 600; color: var(--color-ink); line-height: 1.2; }
+.wuge-name   { font-size: .75rem; color: var(--color-ink-secondary); margin-top: 2px; }
+.wuge-elem   { font-size: .7rem;  color: var(--color-ink-muted); }
+.wuge-rating { font-size: .72rem; font-weight: 600; margin-top: 2px; }
+.name-score-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.name-score-label { font-size: .8rem; color: var(--color-ink-muted); white-space: nowrap; }
+.name-score-bar-wrap { flex: 1; height: 8px; background: var(--color-border); border-radius: 4px; overflow: hidden; }
+.name-score-bar { height: 100%; background: var(--color-gold); border-radius: 4px; transition: width .6s ease; }
+.name-score-num { font-size: .95rem; font-weight: 700; color: var(--color-gold); white-space: nowrap; }
+.name-score-rating { font-size: .8rem; white-space: nowrap; }
+.sancai-block { font-size: .85rem; color: var(--color-ink-secondary); margin-bottom: 14px; line-height: 1.8; }
+/* 六维度评分 */
+.sixdim-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+@media (max-width: 600px) { .sixdim-grid { grid-template-columns: repeat(2, 1fr); } }
+.sixdim-card { background: var(--color-bg-page); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 12px 14px; }
+.sixdim-title { font-size: .75rem; color: var(--color-ink-muted); letter-spacing: .08em; margin-bottom: 6px; }
+.sixdim-score-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.sixdim-score-num { font-size: 1.4rem; font-weight: 700; color: var(--color-gold); }
+.sixdim-score-max { font-size: .75rem; color: var(--color-ink-muted); }
+.sixdim-bar-wrap { flex: 1; height: 6px; background: var(--color-border); border-radius: 3px; overflow: hidden; }
+.sixdim-bar { height: 100%; border-radius: 3px; }
+.sixdim-label { font-size: .75rem; font-weight: 600; margin-bottom: 4px; }
+.sixdim-comment { font-size: .78rem; color: var(--color-ink-secondary); line-height: 1.7; }
 
 /* ── Sketch ── */
 .sketch-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
