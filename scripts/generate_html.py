@@ -270,7 +270,11 @@ def render_bone_section(person: dict) -> str:
 
     breakdown_html = ""
     if breakdown:
-        parts = [f'{["年","月","日","时"][i]}柱 {v:.2f}两' for i, (k, v) in enumerate(breakdown.items()) if k in ["year","month","day","hour"]]
+        def _fmt_bone(v):
+            if isinstance(v, (int, float)):
+                return f'{v:.2f}两'
+            return str(v)  # 已是字符串（如 "1两5钱"）直接展示
+        parts = [f'{["年","月","日","时"][i]}柱 {_fmt_bone(v)}' for i, (k, v) in enumerate(breakdown.items()) if k in ["year","month","day","hour"]]
         breakdown_html = f'<p class="bone-breakdown">{" ＋ ".join(parts)}</p>'
 
     poem_lines = "".join(f"<span>{line}</span>" for line in poem.split("。") if line.strip())
