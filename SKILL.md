@@ -1,9 +1,9 @@
 ---
 name: tianji
-description: "天机 —— 综合命理测算技能（v7.2）。一站式完成八字五行、称骨、紫微斗数（14主星+四化+大限）、西洋星座（太阳/月亮/上升）、三才五格姓名测算及多场景合盘。v7.2新增：空宫借宫处理规则、分维度置信度星级表格、前置校准问答机制、解读正负面平衡强制规范。当用户提到命理测算、算命、八字、五行、称骨、紫微、星座、合盘、三才五格、姓名测算、姓名打分、名字吉凶、综合测算、一站式测算、天机、怎么和他沟通、如何安排工作、亲子养育建议时使用此技能。" 
+description: "天机 —— 综合命理测算技能。一站式完成八字五行、称骨、紫微斗数（14主星+四化+大限）、西洋星座（太阳/月亮/上升）、三才五格姓名测算及多场景合盘；支持结构化 reading.json 输出与静态HTML可视化报告渲染。当用户提到命理测算、算命、八字、五行、称骨、紫微、星座、合盘、三才五格、姓名测算、姓名打分、名字吉凶、综合测算、一站式测算、天机、怎么和他沟通、如何安排工作、亲子养育建议时使用此技能。" 
 metadata:
   author: computer
-  version: '7.2.0'
+  version: '8.0.0'
   language: zh-CN
 ---
 
@@ -709,6 +709,86 @@ combo = _zodiac_combo_reading(sun_sign, moon_sign, rising_sign)
 - **所有场景结尾：和解命题（一句话）**
 
 将报告保存为 Markdown 文件并分享给用户。
+
+### 第十一步：生成 reading.json 结构化输出
+
+完成全部命理推演后，将所有结果序列化为 `reading.json`，供可视化渲染层消费。
+
+**Schema 参考：** `schemas/reading_v8.schema.json`
+
+**顶层结构：**
+```json
+{
+  "meta": { "version": "8.0", "generated_at": "<ISO8601>", "mode": "personal" },
+  "persons": [ { /* 每人完整命盘 */ } ],
+  "synastry": { /* 合盘评分（多人时） */ }
+}
+```
+
+**persons 每项必含字段：**
+- `name`、`gender`、`solar_date`、`birth_time`
+- `bazi`：四柱干支数组
+- `wuxing`：五行计数 `{wood, fire, earth, metal, water}`
+- `bone_weight`：称骨总重（两）
+- `ziwei`：命宫、身宫、五行局、命宫主星、大限速览
+- `western`：太阳/月亮/上升星座
+- `name_wuge`：三才五格（有姓名时）
+- `sketch`：三层人格速写（内核/命运/外在/和解命题）
+- `confidence`：分维度置信度星级
+
+**生成方式：**
+1. 将 LLM 的推演结果按 schema 字段填充（见 `prompts/reading_json_prompt.md`）
+2. 合盘场景需同时填充 `synastry` 字段（见 `prompts/synastry_addendum.md`）
+3. 验证 JSON 可解析、`meta.version == "8.0"`、`persons` 非空
+
+**输出示例参考：** `examples/example_personal.json`（个人）、`examples/example_synastry.json`（合盘）
+
+---
+
+### 第十二步：调用 generate_html.py 渲染静态HTML
+
+使用 `scripts/generate_html.py` 将 reading.json 渲染为金墨体系静态HTML报告。
+
+```bash
+# 个人命盘
+python scripts/generate_html.py \
+  --reading reading.json \
+  --output tianji_report.html
+
+# 合盘（可附加 chart.json 补充原始排盘数据）
+python scripts/generate_html.py \
+  --reading reading.json \
+  --chart chart.json \
+  --output tianji_synastry.html
+```
+
+**HTML 视觉规范：**
+- 色系：暖米白 `#faf7f2`、主金 `#c9973a`、深墨 `#1a1410`
+- 五行可视化：水平条形图（移动端友好）
+- 个人布局：hero → 八字五行 → 称骨 → 紫微 → 星座 → 姓名 → 人格速写 → 置信度
+- 合盘布局：hero → 三维仪表 → 双列摘要 → 综合评分 → 总评 → 场景Tab → 底部折叠完整命盘
+- 无外部依赖，纯内联CSS + 原生JS
+
+---
+
+### 第十三步：质检与交付
+
+输出前执行以下自检：
+
+| 检查项 | 标准 |
+|--------|------|
+| reading.json 可解析 | `json.loads()` 无异常 |
+| version 字段 | `meta.version == "8.0"` |
+| 置信度表 | 每个维度均有星级标注 |
+| 正负面平衡 | 每个命理特征含优势+风险描述 |
+| 空宫处理 | 空宫宫位写「借对宫XXX」，不写「缺乏/空缺」 |
+| HTML 可打开 | 浏览器可直接查看，无JS报错 |
+| 合盘评分口径 | 五行20+5+生肖20+星座15+日主20+称骨15+姓名5=100 |
+
+交付物：
+1. **Markdown 报告**（默认）— 直接在对话中输出
+2. **reading.json**（结构化数据）— 保存至工作目录
+3. **tianji_report.html**（可视化）— 生成后通过 `share_file` 发送用户
 
 ## Example Use Cases
 

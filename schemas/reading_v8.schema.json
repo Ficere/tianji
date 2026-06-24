@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tianji-reading-v8",
+  "title": "天机命理解读 v8.0",
+  "type": "object",
+  "required": ["meta", "persons"],
+  "properties": {
+
+    "meta": {
+      "type": "object",
+      "required": ["scene", "generated_at", "version"],
+      "properties": {
+        "scene":              { "type": "string", "enum": ["personal", "synastry"] },
+        "generated_at":       { "type": "string", "description": "ISO 8601，如 2026-06-24T22:00:00+08:00" },
+        "version":            { "type": "string", "const": "8.0" },
+        "title":              { "type": "string", "description": "报告标题，optional" },
+        "overall_confidence": { "type": "number", "minimum": 0, "maximum": 5, "description": "全局置信度，0-5星，0.5步进" },
+        "notes":              { "type": "string", "description": "免责声明或备注，optional" }
+      }
+    },
+
+    "persons": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/PersonReading" }
+    },
+
+    "synastry": {
+      "oneOf": [
+        { "$ref": "#/$defs/SynastryReading" },
+        { "type": "null" }
+      ],
+      "description": "个人命盘时必须为 null"
+    }
+  },
+
+  "$defs": {
+
+    "PersonReading": {
+      "type": "object",
+      "required": ["person_index", "bazi", "bone_weight", "ziwei", "western_astro", "personality_sketch", "confidence_table"],
+      "properties": {
+
+        "person_index":   { "type": "integer", "enum": [1, 2] },
+        "name":           { "type": "string", "description": "optional，无真实姓名时省略此 key" },
+        "birth_datetime": { "type": "string", "description": "自然语言，如 '1994年4月15日 未时'" },
+        "birth_city":     { "type": "string", "description": "optional，影响上升星座和真太阳时" },
+        "gender":         { "type": "string", "enum": ["male", "female", "unknown"] },
+        "mbti":           { "type": "string", "pattern": "^[EI][NS][TF][JP]$", "description": "optional" },
+
+        "bazi": {
+          "type": "object",
+          "required": ["pillars", "day_master", "strength", "wuxing_distribution", "ten_gods_summary", "overall_analysis"],
+          "properties": {
+            "pillars": {
+              "type": "object",
+              "required": ["year", "month", "day", "hour"],
+              "properties": {
+                "year":  { "type": "string" },
+                "month": { "type": "string" },
+                "day":   { "type": "string" },
+                "hour":  { "type": "string" }
+              }
+            },
+            "day_master":   { "type": "string", "description": "如 '庚金'" },
+            "strength":     { "type": "string", "enum": ["旺", "强", "中", "弱", "极弱"] },
+            "wuxing_distribution": {
+              "type": "object",
+              "required": ["scores", "strong", "weak", "absent"],
+              "properties": {
+                "scores": {
+                  "type": "object",
+                  "properties": {
+                    "wood":  { "type": "number" },
+                    "fire":  { "type": "number" },
+                    "earth": { "type": "number" },
+                    "metal": { "type": "number" },
+                    "water": { "type": "number" }
+                  }
+                },
+                "strong":  { "type": "array", "items": { "type": "string" } },
+                "weak":    { "type": "array", "items": { "type": "string" } },
+                "absent":  { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "ten_gods_summary":  { "type": "string", "description": "十神分布与用神简析，1-3句" },
+            "overall_analysis":  { "type": "string", "description": "八字综合解读，3-6句" },
+            "lucky_elements":    { "type": "array", "items": { "type": "string" }, "description": "喜用神五行，optional" },
+            "unlucky_elements":  { "type": "array", "items": { "type": "string" }, "description": "忌神五行，optional" }
+          }
+        },
+
+        "bone_weight": {
+          "type": "object",
+          "required": ["total_liang", "rating", "poem", "interpretation"],
+          "properties": {
+            "total_liang":   { "type": "number" },
+            "breakdown": {
+              "type": "object",
+              "description": "各柱分值，optional",
+              "properties": {
+                "year":  { "type": "number" },
+                "month": { "type": "number" },
+                "day":   { "type": "number" },
+                "hour":  { "type": "number" }
+              }
+            },
+            "rating":         { "type": "string" },
+            "poem":           { "type": "string" },
+            "interpretation": { "type": "string", "description": "诗文白话解读，2-4句" }
+          }
+        },
+
+        "ziwei": {
+          "type": "object",
+          "required": ["life_palace_star", "pattern", "current_dayun", "sihua_summary", "overall_analysis"],
+          "properties": {
+            "life_palace_star":  { "type": "string" },
+            "life_palace_empty": { "type": "boolean", "description": "optional，空宫时填 true" },
+            "empty_palace_note": { "type": "string",  "description": "空宫借星说明，optional" },
+            "pattern":           { "type": "string" },
+            "current_dayun": {
+              "type": "object",
+              "required": ["age_range", "palace", "star", "interpretation"],
+              "properties": {
+                "age_range":     { "type": "string" },
+                "palace":        { "type": "string" },
+                "star":          { "type": "string" },
+                "interpretation":{ "type": "string", "description": "2-3句" }
+              }
+            },
+            "sihua_summary":   { "type": "string", "description": "四化简析，1-3句" },
+            "overall_analysis":{ "type": "string", "description": "紫微综合解读，3-6句" }
+          }
+        },
+
+        "western_astro": {
+          "type": "object",
+          "required": ["sun_sign", "moon_sign", "trio_interpretation"],
+          "properties": {
+            "sun_sign":          { "type": "string" },
+            "moon_sign":         { "type": "string" },
+            "rising_sign":       { "type": "string", "description": "optional，需城市+精确时间" },
+            "trio_interpretation":{ "type": "string", "description": "三星组合解读，3-5句" },
+            "key_aspects":       { "type": "string", "description": "关键相位，optional" }
+          }
+        },
+
+        "name_analysis": {
+          "type": ["object", "null"],
+          "description": "提供真实姓名时填写，否则为 null",
+          "required": ["strokes_breakdown", "sancai", "wuge_scores", "overall_rating", "interpretation"],
+          "properties": {
+            "strokes_breakdown": {
+              "type": "object",
+              "additionalProperties": { "type": "integer" }
+            },
+            "sancai":   { "type": "string" },
+            "wuge_scores": {
+              "type": "object",
+              "properties": {
+                "tianGe": { "type": "integer" },
+                "renGe":  { "type": "integer" },
+                "diGe":   { "type": "integer" },
+                "waiGe":  { "type": "integer" },
+                "zongGe": { "type": "integer" }
+              }
+            },
+            "overall_rating": { "type": "string", "enum": ["大吉", "吉", "中吉", "中", "小凶", "凶"] },
+            "interpretation": { "type": "string", "description": "2-4句" }
+          }
+        },
+
+        "personality_sketch": {
+          "type": "object",
+          "required": ["inner_core", "destiny_direction", "outer_expression", "reconciliation_theme"],
+          "properties": {
+            "inner_core":            { "type": "string", "description": "内在内核，2-3句" },
+            "destiny_direction":     { "type": "string", "description": "命运方向，2-3句" },
+            "outer_expression":      { "type": "string", "description": "外在表现，2-3句" },
+            "reconciliation_theme":  { "type": "string", "description": "和解命题，1-2句" },
+            "mbti_integration":      { "type": "string", "description": "MBTI补充解读，optional" }
+          }
+        },
+
+        "confidence_table": {
+          "type": "object",
+          "required": ["bazi", "bone_weight", "ziwei", "western_astro", "personality_sketch"],
+          "description": "各维度置信度，0-5星，0.5步进",
+          "properties": {
+            "bazi":               { "type": "number", "minimum": 0, "maximum": 5 },
+            "bone_weight":        { "type": "number", "minimum": 0, "maximum": 5 },
+            "ziwei":              { "type": "number", "minimum": 0, "maximum": 5 },
+            "western_astro":      { "type": "number", "minimum": 0, "maximum": 5 },
+            "name_analysis":      { "type": "number", "minimum": 0, "maximum": 5 },
+            "personality_sketch": { "type": "number", "minimum": 0, "maximum": 5 },
+            "confidence_notes":   { "type": "string", "description": "置信度说明，optional" }
+          }
+        }
+      }
+    },
+
+    "SynastryReading": {
+      "type": "object",
+      "required": ["core_resonance", "will_synergy", "outer_friction", "composite_scores", "overall_comment", "scenario_advice"],
+      "properties": {
+
+        "core_resonance": {
+          "type": "object",
+          "required": ["score", "description"],
+          "properties": {
+            "score":       { "type": "number", "minimum": 0, "maximum": 40, "description": "内核共鸣度，满分40" },
+            "description": { "type": "string", "description": "2-4句" }
+          }
+        },
+
+        "will_synergy": {
+          "type": "object",
+          "required": ["score", "description"],
+          "properties": {
+            "score":       { "type": "number", "minimum": 0, "maximum": 35, "description": "意志协同度，满分35" },
+            "description": { "type": "string", "description": "2-4句" }
+          }
+        },
+
+        "outer_friction": {
+          "type": "object",
+          "required": ["score", "description"],
+          "properties": {
+            "score":       { "type": "number", "minimum": 0, "maximum": 25, "description": "外在摩擦点，满分25，越高摩擦越大" },
+            "description": { "type": "string", "description": "2-4句" }
+          }
+        },
+
+        "composite_scores": {
+          "type": "object",
+          "required": ["total", "wuxing_balance", "wuxing_complete", "shengxiao", "xingzuo", "riZhu", "chenggu", "xingming"],
+          "description": "口径：五行平衡/20 + 五行俱全/5 + 生肖/20 + 星座/15 + 日主/20 + 称骨/15 + 姓名/5 = 100",
+          "properties": {
+            "total":           { "type": "number", "minimum": 0, "maximum": 100 },
+            "wuxing_balance":  { "type": "object", "required": ["score", "comment"], "properties": { "score": { "type": "number", "minimum": 0, "maximum": 20 }, "comment": { "type": "string" } } },
+            "wuxing_complete": { "type": "object", "required": ["score", "comment"], "properties": { "score": { "type": "number", "minimum": 0, "maximum": 5  }, "comment": { "type": "string" } } },
+            "shengxiao":       { "type": "object", "required": ["score", "comment"], "properties": { "score": { "type": "number", "minimum": 0, "maximum": 20 }, "comment": { "type": "string" } } },
+            "xingzuo":         { "type": "object", "required": ["score", "comment"], "properties": { "score": { "type": "number", "minimum": 0, "maximum": 15 }, "comment": { "type": "string" } } },
+            "riZhu":           { "type": "object", "required": ["score", "comment"], "properties": { "score": { "type": "number", "minimum": 0, "maximum": 20 }, "comment": { "type": "string" } } },
+            "chenggu":         { "type": "object", "required": ["score", "comment"], "properties": { "score": { "type": "number", "minimum": 0, "maximum": 15 }, "comment": { "type": "string" } } },
+            "xingming":        { "type": "object", "required": ["score", "comment"], "properties": { "score": { "type": "number", "minimum": 0, "maximum": 5  }, "comment": { "type": "string" } } }
+          }
+        },
+
+        "overall_comment": { "type": "string", "description": "合盘综合评述，5-8句" },
+
+        "scenario_advice": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["scenario", "advice"],
+            "properties": {
+              "scenario": { "type": "string", "enum": ["情侣/伴侣", "亲子", "职场搭档", "团队协作", "管理者与下属", "朋友"] },
+              "advice":   { "type": "string", "description": "2-3句" }
+            }
+          }
+        },
+
+        "compatibility_summary_line": { "type": "string", "description": "一句话金句，用于报告封面，optional" }
+      }
+    }
+  }
+}

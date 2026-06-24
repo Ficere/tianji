@@ -1,0 +1,85 @@
+{
+  "meta": {
+    "scene": "personal",
+    "generated_at": "2026-01-01T10:00:00+08:00",
+    "version": "8.0",
+    "title": "陈明远的命理报告",
+    "overall_confidence": 4.5
+  },
+  "persons": [
+    {
+      "person_index": 1,
+      "name": "陈明远",
+      "birth_datetime": "1992年3月15日 申时",
+      "birth_city": "武汉",
+      "gender": "male",
+      "mbti": "INTJ",
+      "bazi": {
+        "pillars": { "year": "壬申", "month": "癸卯", "day": "庚午", "hour": "戊申" },
+        "day_master": "庚金",
+        "strength": "弱",
+        "wuxing_distribution": {
+          "scores": { "wood": 10, "fire": 30, "earth": 25, "metal": 20, "water": 15 },
+          "strong": ["火", "土"],
+          "weak": ["木", "水"],
+          "absent": []
+        },
+        "ten_gods_summary": "庚金日主生于卯月，火土旺而日主偏弱，正印偏印护身，七杀制化有情。适合走印绶护身、借助贵人之路。",
+        "overall_analysis": "庚金日主卯月生，月支卯木为正官，官印相生格局成形。火土旺盛制金，日主偏弱，用神取土（印）护身，喜水润金。此命格走官职或专业技术路线为宜，不宜过早创业独扛。中年后印星发力，有晋升之机。",
+        "lucky_elements": ["土", "水"],
+        "unlucky_elements": ["火", "木"]
+      },
+      "bone_weight": {
+        "total_liang": 4.35,
+        "breakdown": { "year": 1.1, "month": 1.0, "day": 1.15, "hour": 1.1 },
+        "rating": "中上等命格",
+        "poem": "四两三钱骨中求，勤耕苦读自有收。中岁渐开锦绣路，晚年安康乐悠悠。",
+        "interpretation": "此命格中上，青年须踏实积累，不可浮躁冒进。三十岁后运势明显上升，事业有稳步发展之象。贵人缘较好，需主动维护人脉。"
+      },
+      "ziwei": {
+        "life_palace_star": "紫微星",
+        "life_palace_empty": false,
+        "pattern": "紫微守命，天生领袖气质，自尊心强，有统御之才",
+        "current_dayun": {
+          "age_range": "33-42岁",
+          "palace": "财帛宫",
+          "star": "天府化科",
+          "interpretation": "财帛大限，财运与资源积累进入收获期，天府化科带来专业声誉加持。适合在本职领域深耕，建立个人品牌，财务管理需精细化。"
+        },
+        "sihua_summary": "化科入财帛宫，专业声誉转化为实际收益；化忌入疾厄宫，需注意健康管理，避免过度劳累。",
+        "overall_analysis": "紫微守命，天生具备规划大局与整合资源的能力，适合在有体系的环境中担当领导角色。但紫微的「孤克」特质需要注意——过强的自我标准容易形成人际隔阂。当前财帛大限是实现物质积累与专业认可的关键期，不宜贸然转换赛道。"
+      },
+      "western_astro": {
+        "sun_sign": "双鱼座",
+        "moon_sign": "天蝎座",
+        "rising_sign": "处女座",
+        "trio_interpretation": "双鱼太阳是核心自我认同：感性、直觉强、对意义感有高度需求；天蝎月亮赋予深层的情感强度与对安全感的执着，内心情绪远比外表激烈；处女上升让外人看到细致、谨慎、略显挑剔的一面。三星组合形成「外冷内热」结构，真实情感世界只向极少数人开放。",
+        "key_aspects": "太阳与月亮形成120°三分相，情感直觉与理性分析相互支撑，决策时直觉往往先于逻辑到位。"
+      },
+      "name_analysis": {
+        "strokes_breakdown": { "陈": 16, "明": 8, "远": 7 },
+        "sancai": "土金火",
+        "wuge_scores": { "tianGe": 17, "renGe": 24, "diGe": 15, "waiGe": 8, "zongGe": 31 },
+        "overall_rating": "中吉",
+        "interpretation": "人格数24，为掌权之象，适合走管理与专业领导路线。总格31中吉，一生有贵人缘。三才土金火，整体流通尚顺，但金火相克处需在行事方式上多加圆融。"
+      },
+      "personality_sketch": {
+        "inner_core": "你的内核是「高标准的寻找者」——紫微守命带来天生的精英意识与自我要求，天蝎月亮让内心深处始终有一道隐秘的情感暗流。表面上条理清晰、目标明确，内里却在反复叩问「这件事真的值得吗」。这种内外分层，既是驱动力，也是疲惫感的来源。",
+        "destiny_direction": "当前财帛大限（33-42岁）是物质与声誉双线积累的窗口。化忌落疾厄提示：这个阶段最大的隐患不是外部竞争，而是用健康换成就的模式——需要主动设置节奏，而非全力冲刺到耗尽。",
+        "outer_expression": "处女上升营造出稳重、严谨、有些挑剔的第一印象，INTJ的外显强化了「话少但精准」的标签。双鱼太阳的感性与创意，往往要到深度合作后才会对外展露。内外反差容易被初识者低估。",
+        "reconciliation_theme": "与「完美才值得被看见」和解——不是降低标准，而是允许自己在未完成的状态下也被真实地看见。",
+        "mbti_integration": "INTJ的Ni主导与紫微守命的战略眼光高度契合，Te辅助功能驱动系统化执行。Fi劣势功能在高压下容易以「关闭情绪」的方式保护自我，但长期压抑会积累为身心损耗——化忌落疾厄正是这一模式的命盘投影。"
+      },
+      "confidence_table": {
+        "bazi": 4.5,
+        "bone_weight": 3.5,
+        "ziwei": 4.0,
+        "western_astro": 4.0,
+        "name_analysis": 3.5,
+        "personality_sketch": 4.0,
+        "confidence_notes": "出生时间精确到时辰，城市已提供，各维度置信度良好。称骨为民俗传统，置信度仅供参考。"
+      }
+    }
+  ],
+  "synastry": null
+}
