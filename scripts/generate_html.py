@@ -454,58 +454,153 @@ def render_name_section(person: dict) -> str:
 
 
 def render_sixdim_section(person: dict) -> str:
-    """渲染六维度评分区块：事业/财运/婚姻/健康/子女/精神"""
+    """六维度评分 + 权重滑块 + JS 实时重算引擎"""
+    import json as _json
     dims = person.get("six_dimensions")
     if not dims:
         return ""
 
-    DIM_LABELS = [
-        ("career",   "事业"),
-        ("wealth",   "财运"),
-        ("marriage", "婚姻"),
-        ("health",   "健康"),
-        ("children", "子女"),
-        ("spirit",   "精神"),
+    DIM_META = [
+        ("career",   "事业", "📐"),
+        ("wealth",   "财运", "💰"),
+        ("marriage", "婚姻", "❤"),
+        ("health",   "健康", "🌿"),
+        ("children", "子女", "🌱"),
+        ("spirit",   "精神", "✦"),
     ]
-    # 限分100，条形颜色按分段
-    def bar_color(score, total=100):
-        pct = score / total
-        if pct >= 0.8:  return "#c9973a"
-        if pct >= 0.6:  return "#4a7c59"
-        if pct >= 0.4:  return "#7a6a55"
-        return "#b5451b"
+    MODULE_ORDER = ["bazi", "ziwei", "bone", "western", "name", "mbti"]
+    MODULE_CN    = {"bazi":"八字", "ziwei":"紫微", "bone":"称骨",
+                    "western":"星座", "name":"姓名", "mbti":"MBTI"}
 
+    # 把完整数据序列化进 HTML 供 JS 消费
+    js_data = {}
+    for key, cn, _ in DIM_META:
+        d    = dims.get(key, {})
+        sigs = d.get("signals", {})
+        wts  = d.get("weights", {})
+        js_data[key] = {
+            "cn":      cn,
+            "label":   d.get("label", ""),
+            "comment": d.get("comment", ""),
+            "signals": {m: sigs[m]["score"] for m in MODULE_ORDER if m in sigs},
+            "bases":   {m: sigs[m].get("basis", "") for m in MODULE_ORDER if m in sigs},
+            "weights": {m: wts[m]["default"] for m in MODULE_ORDER if m in wts},
+        }
+    js_data_str = _json.dumps(js_data, ensure_ascii=False)
+
+    # 静态卡片骨架（JS 初始化后填充数值）
     cards_html = ""
-    for key, cn_label in DIM_LABELS:
-        d = dims.get(key)
-        if not d:
-            continue
-        score   = d.get("score", 0)
-        total   = d.get("total", 100)
-        label   = d.get("label", "")
+    for key, cn, icon in DIM_META:
+        d       = dims.get(key, {})
         comment = d.get("comment", "")
-        pct     = round(min(score / total, 1) * 100)
-        color   = bar_color(score, total)
-        cards_html += f"""
-        <div class="sixdim-card">
-          <div class="sixdim-title">{cn_label}</div>
-          <div class="sixdim-score-row">
-            <span class="sixdim-score-num">{score}</span>
-            <span class="sixdim-score-max">/{total}</span>
-            <div class="sixdim-bar-wrap">
-              <div class="sixdim-bar" style="width:{pct}%;background:{color}"></div>
-            </div>
-          </div>
-          <div class="sixdim-label" style="color:{color}">{label}</div>
-          <div class="sixdim-comment">{comment}</div>
-        </div>"""
+        sigs    = d.get("signals", {})
+        wts     = d.get("weights", {})
+        sig_rows = ""
+        for m in MODULE_ORDER:
+            if m not in sigs:
+                continue
+            sig_score = sigs[m]["score"]
+            sig_basis = sigs[m].get("basis", "")
+            default_w = wts.get(m, {}).get("default", 10)
+            sig_rows += (
+                f'<div class="sd-sig-row">'
+                f'<div class="sd-sig-top">'
+                f'<span class="sd-mod-name">{MODULE_CN[m]}</span>'
+                f'<span class="sd-sig-score">{sig_score}</span>'
+                f'<div class="sd-slider-wrap">'
+                f'<input type="range" class="sd-weight-slider"'
+                f' data-dim="{key}" data-mod="{m}"'
+                f' min="0" max="50" step="1" value="{default_w}"'
+                f' oninput="sdRecalc(\'{key}\')" />'
+                f'<span class="sd-weight-val" id="sdw-{key}-{m}">{default_w}</span>'
+                f'</div></div>'
+                f'<div class="sd-basis">{sig_basis}</div>'
+                f'</div>'
+            )
+        cards_html += (
+            f'<div class="sixdim-card" id="sdcard-{key}">'
+            f'<div class="sd-card-header">'
+            f'<span class="sd-icon">{icon}</span>'
+            f'<span class="sd-cn">{cn}</span>'
+            f'<div class="sd-score-pill">'
+            f'<span class="sd-score-num" id="sdscore-{key}">—</span>'
+            f'<span class="sd-score-max">/100</span>'
+            f'</div></div>'
+            f'<div class="sd-bar-wrap"><div class="sd-bar" id="sdbar-{key}"></div></div>'
+            f'<div class="sd-label" id="sdlabel-{key}"></div>'
+            f'<div class="sd-comment">{comment}</div>'
+            f'<details class="sd-detail">'
+            f'<summary class="sd-detail-toggle">权重调整 · 信号来源</summary>'
+            f'<div class="sd-sig-list">'
+            f'<div class="sd-sig-header"><span>模块</span><span>信号分</span><span>权重（拖动调整）</span></div>'
+            f'{sig_rows}'
+            f'<button class="sd-reset-btn" onclick="sdReset(\'{key}\')">恢复默认权重</button>'
+            f'</div></details>'
+            f'</div>'
+        )
 
-    return f"""
-    <section class="report-section" id="sixdim">
-      <h2 class="section-title">六维度评分</h2>
-      <div class="sixdim-grid">{cards_html}</div>
-    </section>"""
+    js_engine = (
+        "<script>\n(function(){\n"
+        "  var SD_DATA = " + js_data_str + ";\n"
+        "\n"
+        "  function scoreToColor(pct) {\n"
+        "    if (pct >= 0.8) return '#c9973a';\n"
+        "    if (pct >= 0.6) return '#4a7c59';\n"
+        "    if (pct >= 0.4) return '#7a6a55';\n"
+        "    return '#b5451b';\n"
+        "  }\n"
+        "\n"
+        "  window.sdRecalc = function(dimKey) {\n"
+        "    var d = SD_DATA[dimKey];\n"
+        "    var sliders = document.querySelectorAll('.sd-weight-slider[data-dim=\"' + dimKey + '\"]');\n"
+        "    var wsum = 0, score = 0;\n"
+        "    sliders.forEach(function(sl) {\n"
+        "      var mod = sl.dataset.mod;\n"
+        "      var w   = parseFloat(sl.value);\n"
+        "      var s   = d.signals[mod] || 0;\n"
+        "      wsum  += w;\n"
+        "      score += s * w;\n"
+        "      var wlabel = document.getElementById('sdw-' + dimKey + '-' + mod);\n"
+        "      if (wlabel) wlabel.textContent = w;\n"
+        "    });\n"
+        "    var final = wsum > 0 ? score / wsum : 0;\n"
+        "    var pct   = Math.min(final / 100, 1);\n"
+        "    var color = scoreToColor(pct);\n"
+        "    var numEl   = document.getElementById('sdscore-'  + dimKey);\n"
+        "    var barEl   = document.getElementById('sdbar-'    + dimKey);\n"
+        "    var labelEl = document.getElementById('sdlabel-'  + dimKey);\n"
+        "    var cardEl  = document.getElementById('sdcard-'   + dimKey);\n"
+        "    if (numEl)   numEl.textContent  = final.toFixed(1);\n"
+        "    if (barEl)   { barEl.style.width = (pct*100).toFixed(1)+'%'; barEl.style.background = color; }\n"
+        "    if (labelEl) { labelEl.textContent = d.label; labelEl.style.color = color; }\n"
+        "    if (cardEl)  cardEl.style.setProperty('--dim-color', color);\n"
+        "  };\n"
+        "\n"
+        "  window.sdReset = function(dimKey) {\n"
+        "    var d = SD_DATA[dimKey];\n"
+        "    var sliders = document.querySelectorAll('.sd-weight-slider[data-dim=\"' + dimKey + '\"]');\n"
+        "    sliders.forEach(function(sl) {\n"
+        "      var mod = sl.dataset.mod;\n"
+        "      if (d.weights[mod] !== undefined) sl.value = d.weights[mod];\n"
+        "    });\n"
+        "    sdRecalc(dimKey);\n"
+        "  };\n"
+        "\n"
+        "  var dims = Object.keys(SD_DATA);\n"
+        "  dims.forEach(function(dk) { sdRecalc(dk); });\n"
+        "})();\n"
+        "</script>"
+    )
 
+    return (
+        '\n    <section class="report-section" id="sixdim">'
+        '\n      <h2 class="section-title">六维度评分</h2>'
+        '\n      <p class="sd-intro">综合八字、紫微、称骨、星座、姓名、MBTI六大模块加权合成。'
+        '展开每个维度可查看各模块信号分并自由调整权重，分数实时更新。</p>'
+        f'\n      <div class="sixdim-grid">{cards_html}</div>'
+        '\n    </section>'
+        f'\n    {js_engine}'
+    )
 
 def render_sketch_section(person: dict) -> str:
     sk = person.get("personality_sketch", {})
@@ -1049,18 +1144,77 @@ body {
 .name-score-num { font-size: .95rem; font-weight: 700; color: var(--color-gold); white-space: nowrap; }
 .name-score-rating { font-size: .8rem; white-space: nowrap; }
 .sancai-block { font-size: .85rem; color: var(--color-ink-secondary); margin-bottom: 14px; line-height: 1.8; }
-/* 六维度评分 */
-.sixdim-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-@media (max-width: 600px) { .sixdim-grid { grid-template-columns: repeat(2, 1fr); } }
-.sixdim-card { background: var(--color-bg-page); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 12px 14px; }
-.sixdim-title { font-size: .75rem; color: var(--color-ink-muted); letter-spacing: .08em; margin-bottom: 6px; }
-.sixdim-score-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.sixdim-score-num { font-size: 1.4rem; font-weight: 700; color: var(--color-gold); }
-.sixdim-score-max { font-size: .75rem; color: var(--color-ink-muted); }
-.sixdim-bar-wrap { flex: 1; height: 6px; background: var(--color-border); border-radius: 3px; overflow: hidden; }
-.sixdim-bar { height: 100%; border-radius: 3px; }
-.sixdim-label { font-size: .75rem; font-weight: 600; margin-bottom: 4px; }
-.sixdim-comment { font-size: .78rem; color: var(--color-ink-secondary); line-height: 1.7; }
+/* ── 六维度评分 ── */
+.sd-intro { font-size: .82rem; color: var(--color-ink-muted); margin-bottom: 14px; line-height: 1.7; }
+.sixdim-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 16px; }
+@media (max-width: 640px) { .sixdim-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 400px) { .sixdim-grid { grid-template-columns: 1fr; } }
+
+.sixdim-card {
+  --dim-color: #7a6a55;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border);
+  border-top: 3px solid var(--dim-color);
+  border-radius: var(--radius);
+  padding: 14px;
+  transition: border-top-color .3s;
+}
+.sd-card-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.sd-icon   { font-size: 1rem; }
+.sd-cn     { font-size: .9rem; font-weight: 600; color: var(--color-ink); flex: 1; }
+.sd-score-pill { display: flex; align-items: baseline; gap: 1px; }
+.sd-score-num  { font-size: 1.5rem; font-weight: 700; color: var(--dim-color); transition: color .3s; }
+.sd-score-max  { font-size: .72rem; color: var(--color-ink-muted); }
+
+.sd-bar-wrap { height: 6px; background: var(--color-border); border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+.sd-bar      { height: 100%; border-radius: 3px; width: 0%; transition: width .5s ease, background .3s; }
+.sd-label    { font-size: .75rem; font-weight: 600; margin-bottom: 6px; transition: color .3s; }
+.sd-comment  { font-size: .78rem; color: var(--color-ink-secondary); line-height: 1.75; margin-bottom: 8px; }
+
+/* 展开区 */
+.sd-detail { border-top: 1px solid var(--color-border); margin-top: 8px; padding-top: 8px; }
+.sd-detail-toggle {
+  font-size: .75rem; color: var(--color-ink-muted); cursor: pointer;
+  list-style: none; user-select: none; padding: 2px 0;
+}
+.sd-detail-toggle::-webkit-details-marker { display: none; }
+.sd-detail-toggle::before { content: '▶ '; font-size: .65rem; }
+details[open] .sd-detail-toggle::before { content: '▼ '; }
+
+.sd-sig-list { margin-top: 10px; }
+.sd-sig-header {
+  display: grid; grid-template-columns: 3rem 3rem 1fr;
+  font-size: .68rem; color: var(--color-ink-muted);
+  padding: 0 0 4px; border-bottom: 1px solid var(--color-border);
+  margin-bottom: 6px; gap: 6px;
+}
+.sd-sig-row { margin-bottom: 10px; }
+.sd-sig-top {
+  display: grid; grid-template-columns: 3rem 3rem 1fr;
+  align-items: center; gap: 6px;
+}
+.sd-mod-name  { font-size: .78rem; font-weight: 600; color: var(--color-ink); }
+.sd-sig-score { font-size: .85rem; font-weight: 700; color: var(--color-gold); }
+.sd-slider-wrap { display: flex; align-items: center; gap: 5px; }
+.sd-weight-slider {
+  flex: 1; height: 3px; cursor: pointer; accent-color: var(--color-gold);
+  -webkit-appearance: none; appearance: none;
+  background: var(--color-border); border-radius: 2px;
+}
+.sd-weight-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--color-gold); cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+.sd-weight-val { font-size: .72rem; color: var(--color-ink-muted); min-width: 18px; text-align: right; }
+.sd-basis { font-size: .72rem; color: var(--color-ink-muted); line-height: 1.6; margin-top: 3px;
+  padding-left: 3rem; grid-column: 1/-1; }
+.sd-reset-btn {
+  margin-top: 8px; font-size: .72rem; padding: 4px 10px;
+  border: 1px solid var(--color-border); border-radius: 4px;
+  background: transparent; color: var(--color-ink-muted); cursor: pointer;
+}
+.sd-reset-btn:hover { border-color: var(--color-gold); color: var(--color-gold); }
 
 /* ── Sketch ── */
 .sketch-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
