@@ -1806,9 +1806,6 @@ def build_synastry_page(ctx: dict) -> str:
     </section>""" if overall else ""
     scenarios_html = render_communication_guide(synastry)
 
-    # 关系矩阵图
-    matrix_html = render_relation_matrix(persons, synastry)
-
     # 底部折叠完整命盘
     full_html = ""
     for p_idx, p in enumerate(persons, start=1):
@@ -1833,7 +1830,6 @@ def build_synastry_page(ctx: dict) -> str:
         scores_html,
         overall_html,
         scenarios_html,
-        matrix_html,
         full_section,
     ])
 
