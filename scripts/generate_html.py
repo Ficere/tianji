@@ -1398,7 +1398,7 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
         p = get_pair(a, b)
         return p.get("note", "") if p else ""
 
-    # ── ① 上三角矩阵表 ────────────────────────────────────────────────────────
+    # ── ① 全对称矩阵表（上下三角均填充，对角线为自身标识）────────────────────────
     col_label = lambda nm: nm  # 始终使用全名，不简写
     header_cells = "".join(
         f'<th class="matrix-col-head" title="{nm}">{col_label(nm)}</th>' for nm in names
@@ -1407,9 +1407,7 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
     for i, row_name in enumerate(names):
         cells = f'<th class="matrix-row-head">{row_name}</th>'
         for j, col_name in enumerate(names):
-            if j < i:
-                cells += '<td class="matrix-cell matrix-cell-empty"></td>'
-            elif j == i:
+            if j == i:
                 cells += f'<td class="matrix-cell matrix-cell-self"><span class="matrix-self-dot" style="color:#4a3a28;font-size:.72rem">{row_name}</span></td>'
             else:
                 ptype = get_type(row_name, col_name)
