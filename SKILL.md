@@ -675,6 +675,24 @@ combo = _zodiac_combo_reading(sun_sign, moon_sign, rising_sign)
 
 ### 第十步：输出报告
 
+#### 输出格式规则（双格式强制）
+
+**每次报告必须同时输出两份文件，缺一不可：**
+
+| 格式 | 文件 | 用途 |
+|------|------|------|
+| **Markdown (.md)** | `*_report.md` | 完整信息版：所有文字内容、数据、分析、评分均完整呈现；便于复制、引用、二次编辑 |
+| **HTML (.html)** | `*_report.html` | 可视化版：五行条形图动画、关系矩阵热力表（多人）、四柱卡片、配色排版 |
+
+**执行顺序：**
+1. 先生成 Markdown，保存为 `.md` 文件，`share_file` 给用户
+2. 再生成 HTML，保存为 `.html` 文件，`share_file` 给用户
+3. 两份文件内容必须一致——Markdown 是 HTML 的纯文本镜像，不得出现「HTML 有但 Markdown 没有」的信息
+
+**例外：** 用户明确说「只要 Markdown」或「只要 HTML」时，按用户指定输出单一格式。
+
+---
+
 按照 `references/output-template.md` 格式生成完整报告，结构如下：
 
 #### 输出风格规范
