@@ -351,6 +351,25 @@ def render_ziwei_section(person: dict) -> str:
         "官禄宫","田宅宫","福德宫","父母宫"
     ]
 
+    # ── 对宫映射（六对宫）──────────────────────────────────────
+    OPPOSITE = {
+        "命宫":"迁移宫","迁移宫":"命宫",
+        "兄弟宫":"交友宫","交友宫":"兄弟宫",
+        "夫妻宫":"官禄宫","官禄宫":"夫妻宫",
+        "子女宫":"田宅宫","田宅宫":"子女宫",
+        "财帛宫":"福德宫","福德宫":"财帛宫",
+        "疾厄宫":"父母宫","父母宫":"疾厄宫",
+    }
+
+    def get_opposite_main_stars(pname):
+        """返回对宫的主星列表"""
+        opp = OPPOSITE.get(pname, "")
+        if not opp:
+            return []
+        opp_stars = palace_stars.get(opp, [])
+        main, _ = classify_stars(opp_stars)
+        return main, opp
+
     def render_palace_cell(pname):
         zhi   = palace_zhi.get(pname, "")
         stars = palace_stars.get(pname, [])
@@ -361,19 +380,34 @@ def render_ziwei_section(person: dict) -> str:
                   ("亥宫" in body_ref and "福德" in pname)
         is_curr_dayun = current_dayun.get("palace", "") == pname
         has_reading   = pname in palace_readings
+        is_empty      = len(main) == 0  # 无主星 = 空宫
 
         cell_class = "ziwei-cell"
         if is_life:        cell_class += " cell-life"
         if is_body:        cell_class += " cell-body"
         if is_curr_dayun:  cell_class += " cell-curr-dayun"
         if has_reading:    cell_class += " cell-has-reading"
+        if is_empty:       cell_class += " cell-empty"
 
         markers = ""
         if is_life:       markers += '<span class="cell-marker marker-life">命</span>'
         if is_body:       markers += '<span class="cell-marker marker-body">身</span>'
         if is_curr_dayun: markers += '<span class="cell-marker marker-dayun">限</span>'
 
-        main_html = "".join(star_badge(s) for s in main) if main else '<span class="ziwei-empty-cell">空宫</span>'
+        # 空宫：显示「借对宫」提示
+        if is_empty:
+            opp_main, opp_name = get_opposite_main_stars(pname)
+            if opp_main:
+                opp_stars_str = "·".join(opp_main)
+                main_html = (
+                    f'<span class="ziwei-empty-cell">空宫</span>'
+                    f'<span class="borrow-hint">借{opp_name} {opp_stars_str}</span>'
+                )
+            else:
+                main_html = '<span class="ziwei-empty-cell">空宫</span>'
+        else:
+            main_html = "".join(star_badge(s) for s in main)
+
         aux_html  = "".join(star_badge(s, small=True) for s in aux)
         aux_block = f'<div class="cell-aux-stars">{aux_html}</div>' if aux else ""
 
@@ -389,6 +423,59 @@ def render_ziwei_section(person: dict) -> str:
         )
 
     grid_cells = "\n".join(render_palace_cell(p) for p in PALACE_ORDER)
+
+    # ── 空宫对宫关系面板 ─────────────────────────────────────
+    def render_empty_palace_panel():
+        items = []
+        for pname in PALACE_ORDER:
+            stars = palace_stars.get(pname, [])
+            main, _ = classify_stars(stars)
+            if len(main) > 0:
+                continue  # 有主星，跳过
+            opp_main, opp_name = get_opposite_main_stars(pname)
+            opp_str = "·".join(opp_main) if opp_main else "亦空宫"
+            pr = palace_readings.get(pname, {})
+            reading = pr.get("reading", "") if pr else ""
+            reading_short = reading[:60] + "…" if len(reading) > 60 else reading
+            # 对宫说明
+            desc_map = {
+                "命宫":  "人格受外部环境塑造，迁移宫主星代入，适应力强但需主动锚定自我方向",
+                "迁移宫":"外部机遇受命宫能量辐射，主动出击比等待更有效",
+                "财帛宫":"财源依赖外部机缘，福德宫能量决定财富流向",
+                "福德宫":"精神世界受财帛宫影响，内心富足与物质有内在关联",
+                "官禄宫":"事业发展受夫妻宫能量影响，关键人际关系是事业变量",
+                "夫妻宫":"感情缘分受官禄宫塑造，对象特质对自身影响深远",
+                "兄弟宫":"手足/平辈关系由交友宫主星映射，社会网络弥补血缘弱化",
+                "交友宫":"朋友圈能量由兄弟宫反射，亲密程度决定外部资源",
+                "子女宫":"子女/创作受田宅宫影响，家庭环境是创造力的土壤",
+                "田宅宫":"家宅/不动产受子女宫能量影响，家庭扩展带动资产",
+                "疾厄宫":"健康状态受父母宫映射，早年养育方式影响体质底色",
+                "父母宫":"长辈缘由疾厄宫折射，与父母关系中有健康课题",
+            }
+            desc = desc_map.get(pname, "")
+            reading_html = f'<div class="ep-reading">{reading_short}</div>' if reading_short else ""
+            items.append(
+                f'<div class="empty-palace-item">'
+                f'<div class="ep-header">'
+                f'<span class="ep-name">{pname}</span>'
+                f'<span class="ep-arrow">→ 借</span>'
+                f'<span class="ep-opp">{opp_name}</span>'
+                f'<span class="ep-stars">{opp_str}</span>'
+                f'</div>'
+                f'<div class="ep-desc">{desc}</div>'
+                f'{reading_html}'
+                f'</div>'
+            )
+        if not items:
+            return ""
+        return (
+            f'<div class="empty-palace-panel">'
+            f'<div class="ep-panel-title">空宫借对宫说明</div>'
+            f'{"".join(items)}'
+            f'</div>'
+        )
+
+    empty_panel_html = render_empty_palace_panel()
 
     # ── 四化卡片 ─────────────────────────────────────────────
     sihua_card_defs = [
@@ -544,6 +631,7 @@ def render_ziwei_section(person: dict) -> str:
         f'<h3 class="ziwei-sub-title">十二宫星曜</h3>'
         f'<div class="ziwei-grid">{grid_cells}</div>'
         f'{legend}'
+        f'{empty_panel_html}'
         f'<h3 class="ziwei-sub-title">四化飞星</h3>'
         f'<div class="sihua-cards">{sihua_cards_html}</div>'
         f'<h3 class="ziwei-sub-title">大限时间轴（{dayun_dir}）</h3>'
@@ -1395,6 +1483,24 @@ body {
 .ziwei-overall{background:#faf3e6;border-radius:8px;padding:14px 16px;border:1px solid #e8d9b8}
 .ziwei-pattern-text{font-size:13px;font-weight:700;color:#3a2a10;margin-bottom:8px;line-height:1.7}
 .ziwei-overall-text{font-size:13px;color:#555;line-height:1.85;margin:0}
+
+/* ── 空宫对宫提示 ── */
+.cell-empty{border-style:dashed;border-color:#d4c9b4;background:#fafaf7}
+.borrow-hint{display:block;font-size:9px;color:#9e7c3a;font-style:italic;margin-top:3px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── 空宫对宫面板 ── */
+.empty-palace-panel{background:#faf8f3;border:1px solid #e0d4bf;border-radius:8px;padding:12px 14px;margin:8px 0 16px}
+.ep-panel-title{font-size:11px;font-weight:700;color:var(--color-gold);letter-spacing:.8px;margin-bottom:10px}
+.empty-palace-item{padding:7px 0;border-bottom:1px solid #ede6d6;display:flex;flex-direction:column;gap:3px}
+.empty-palace-item:last-child{border-bottom:none}
+.ep-header{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ep-name{font-size:12px;font-weight:700;color:#3a2a10;min-width:52px}
+.ep-arrow{font-size:11px;color:#bbb}
+.ep-opp{font-size:12px;color:#555;font-weight:600}
+.ep-stars{font-size:12px;color:var(--color-gold);font-weight:700;margin-left:4px}
+.ep-desc{font-size:11px;color:#777;line-height:1.6;padding-left:2px}
+.ep-reading{font-size:10px;color:#999;background:#f5f0e8;border-radius:3px;padding:3px 7px;line-height:1.5;margin-top:2px}
+
 
 /* 旧样式兜底 */
 .ziwei-header{display:none}

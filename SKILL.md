@@ -765,9 +765,61 @@ python scripts/generate_html.py \
 **HTML 视觉规范：**
 - 色系：暖米白 `#faf7f2`、主金 `#c9973a`、深墨 `#1a1410`
 - 五行可视化：水平条形图（移动端友好）
-- 个人布局：hero → 八字五行 → 称骨 → 紫微 → 星座 → 姓名 → 人格速写 → 置信度
-- 合盘布局：hero → 三维仪表 → 双列摘要 → 综合评分 → 总评 → 场景Tab → 底部折叠完整命盘
+- 个人布局：hero → 八字五行 → 称骨 → 紫微 → 星座 → 姓名 → 六维度评分 → 人格速写 → 置信度
+- 合盘布局：hero → 三维仪表 → 双列摘要 → 综合评分 → 总评 → 场景Tab → 底部折叠完整命盘（含每人完整紫微排盘）
 - 无外部依赖，纯内联CSS + 原生JS
+
+**紫微排盘模板说明（`render_ziwei_section`）：**
+
+紫微 section 由五个子模块组成，reading.json 的 `ziwei` 字段须包含以下键：
+
+| 子模块 | 所需字段 | 说明 |
+|--------|---------|------|
+| 信息栏 | `life_palace` `body_palace` `wuxing_ju` `life_master` `body_master` `dayun_direction` | 顶部横排速览 |
+| 十二宫网格 | `twelve_palaces_stars` `twelve_palaces_zhi` `sihua_detail` `current_dayun.palace` | 4×3宫格，含主星/辅星/四化角标 |
+| 空宫借对宫 | `twelve_palaces_stars`（自动推断） | 无主星宫位自动显示「借对宫XXX」并展开说明面板 |
+| 四化飞星卡片 | `sihua_detail`（含 `星曜` `所在地支` `所在宫位`）| 化禄/化权/化科/化忌各一张卡片 |
+| 大限时间轴 | `dayun_sequence`（含 `年龄范围` `宫位` `地支` `主星`）`current_dayun`（含 `age_range` `palace` `star` `interpretation`）| 纵列时间轴，当前大限高亮 |
+| 六宫深度解读 | `palace_readings`（键为宫位名，值含 `stars` `zhi` `reading`）| 命/财帛/官禄/夫妻/疾厄/迁移六宫 |
+| 整体格局 | `pattern` `overall_analysis` | 底部格局总结 |
+
+**空宫处理规则（渲染层自动执行）：**
+
+宫格检测到无主星时自动：
+1. 宫格显示虚线边框 + 斜体「空宫」标注 + 灰金色「借X宫 主星名」提示
+2. 网格下方弹出「空宫借对宫说明」面板，逐条列出空宫→对宫→主星→解读逻辑
+3. **禁止**在 `palace_readings` 的 `reading` 字段中写「空宫/缺乏」，改为写「借对宫XXX能量…」
+
+六对宫对应关系：
+```
+命宫 ↔ 迁移宫    兄弟宫 ↔ 交友宫    夫妻宫 ↔ 官禄宫
+子女宫 ↔ 田宅宫   财帛宫 ↔ 福德宫    疾厄宫 ↔ 父母宫
+```
+
+**六维度评分与权重系统（`render_sixdim_section`）：**
+
+reading.json 须包含 `six_dimensions` 字段，结构如下：
+
+```json
+"six_dimensions": {
+  "career": {
+    "label": "事业",
+    "default_weights": {"bazi":30,"ziwei":30,"bone":15,"zodiac":10,"name":5,"mbti":10},
+    "signals": {
+      "bazi": {"score":75,"note":"八字层面的事业信号描述"},
+      "ziwei": {"score":72,"note":"紫微层面信号"},
+      "bone": {"score":80,"note":"称骨层面"},
+      "zodiac": {"score":65,"note":"星座层面"},
+      "name": {"score":90,"note":"姓名层面"},
+      "mbti": {"score":70,"note":"MBTI层面"}
+    },
+    "summary": "综合解读文字"
+  },
+  ... // 财运/婚姻/健康/子女/精神同结构
+}
+```
+
+渲染后每个维度卡片包含：加权合成分 + 进度条 + 滑块（可拖动调整权重，JS实时重算）+ 各模块信号详情 + 综合解读。
 
 ---
 
