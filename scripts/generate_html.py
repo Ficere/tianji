@@ -730,6 +730,45 @@ def render_name_section(person: dict) -> str:
     na = person.get("name_analysis")
     if not na:
         return ""
+
+    # ── 字段兼容层：统一 strokes_breakdown / five_grids / overall_rating ──
+    # strokes：list[{字, 康熙笔画}] → strokes_breakdown dict
+    if "strokes_breakdown" not in na and "strokes" in na:
+        na = dict(na)
+        na["strokes_breakdown"] = {item["字"]: item["康熙笔画"] for item in na["strokes"] if isinstance(item, dict)}
+
+    # five_grids → wuge_scores（键名映射：天格→tianGe 等）
+    if "wuge_scores" not in na and "five_grids" in na:
+        na = dict(na)
+        key_map = {"天格": "tianGe", "人格": "renGe", "地格": "diGe", "外格": "waiGe", "总格": "zongGe"}
+        wuge_scores = {}
+        for cn, en in key_map.items():
+            g = na["five_grids"].get(cn, {})
+            wuge_scores[en] = {
+                "value": g.get("数理", ""),
+                "name": g.get("名称", ""),
+                "rating": g.get("吉凶", ""),
+                "element": g.get("五行", ""),
+                "meaning": g.get("含义", ""),
+            }
+        na["wuge_scores"] = wuge_scores
+
+    # sancai：配置/评级/详细 → config/rating/detail
+    sancai_raw = na.get("sancai", {})
+    if isinstance(sancai_raw, dict) and "config" not in sancai_raw:
+        sc = dict(sancai_raw)
+        sc.setdefault("config", sancai_raw.get("配置", ""))
+        sc.setdefault("rating", sancai_raw.get("分析", {}).get("评级", ""))
+        detail_list = sancai_raw.get("分析", {}).get("详细", [])
+        sc.setdefault("detail", "；".join(detail_list) if isinstance(detail_list, list) else str(detail_list))
+        na = dict(na)
+        na["sancai"] = sc
+
+    # overall_rating
+    if "overall_rating" not in na:
+        na = dict(na)
+        na["overall_rating"] = na.get("overall_grade", "")
+
     strokes = na.get("strokes_breakdown", {})
     sancai = na.get("sancai", "")
     wuge = na.get("wuge_scores", {})
@@ -1064,10 +1103,13 @@ def render_person_summary(person: dict) -> str:
       {dayun_html}
       <div class="sum-signs">{signs_html}</div>
       <p class="sum-inner">{inner_short}</p>
-      <details class="full-detail">
-        <summary>展开完整命盘 ▾</summary>
-        <div class="full-detail-inner" data-person-idx="{idx}"><!-- 完整命盘见页面底部 --></div>
-      </details>
+      <button class="full-detail-btn" onclick="(function(){{
+        var target = document.getElementById('full-person-{idx}');
+        if(target){{
+          target.open = true;
+          target.scrollIntoView({{behavior:'smooth', block:'start'}});
+        }}
+      }})()" title="跳转至完整命盘">展开完整命盘 ↓</button>
     </div>"""
 
 
@@ -1109,6 +1151,63 @@ def render_synastry_scores(synastry: dict) -> str:
     </section>"""
 
 
+def render_communication_guide(synastry: dict) -> str:
+    """渲染关系指南 section（沟通要点 + 关系发展建议）"""
+    guide = synastry.get("communication_guide", {})
+    advices = synastry.get("scenario_advice", [])
+    if not guide and not advices:
+        return ""
+
+    p1_name = synastry.get("_p1_name", "她")
+    p2_name = synastry.get("_p2_name", "他")
+
+    # 沟通要点卡片
+    friction_html = f'<p class="guide-friction">{guide.get("key_friction","")}</p>' if guide.get("key_friction") else ""
+
+    def list_to_html(items):
+        return "".join(f'<li>{item}</li>' for item in items) if items else ""
+
+    her_items = list_to_html(guide.get("her_to_him", []))
+    him_items = list_to_html(guide.get("him_to_her", []))
+    window_html = f'<p class="guide-window">⏳ {guide.get("window","")}</p>' if guide.get("window") else ""
+    reconcile = guide.get("reconciliation", "")
+
+    guide_html = ""
+    if guide:
+        guide_html = f"""
+    <section class="report-section" id="communication-guide">
+      <h2 class="section-title">关系指南</h2>
+      {friction_html}
+      <div class="guide-cols">
+        {"" if not her_items else f'<div class="guide-col"><h4>{p1_name} → {p2_name}</h4><ul>{her_items}</ul></div>'}
+        {"" if not him_items else f'<div class="guide-col"><h4>{p2_name} → {p1_name}</h4><ul>{him_items}</ul></div>'}
+      </div>
+      {window_html}
+      {"" if not reconcile else f'<blockquote class="guide-reconcile">「{reconcile}」</blockquote>'}
+    </section>"""
+
+    # 场景建议 Tab（从 scenario_advice 渲染，替代原来空的 render_scenario_tabs）
+    scenario_html = ""
+    if advices:
+        tabs_h = ""
+        panels_h = ""
+        for i, item in enumerate(advices):
+            sc = item.get("scenario", "")
+            adv = item.get("advice", "").replace("\n\n", "</p><p>").replace("\n", "<br>")
+            active = ' class="scenario-tab active"' if i == 0 else ' class="scenario-tab"'
+            hidden = "" if i == 0 else " hidden"
+            tabs_h += f'<button{active} data-target="scenario-adv-{i}">{sc}</button>'
+            panels_h += f'<div class="scenario-content" id="scenario-adv-{i}"{hidden}><p>{adv}</p></div>'
+        scenario_html = f"""
+    <section class="report-section" id="scenarios">
+      <h2 class="section-title">场景化建议</h2>
+      <div class="scenario-tabs">{tabs_h}</div>
+      <div class="scenario-panels">{panels_h}</div>
+    </section>"""
+
+    return guide_html + scenario_html
+
+
 def render_scenario_tabs(synastry: dict) -> str:
     advices = synastry.get("scenario_advice", [])
     if not advices:
@@ -1148,6 +1247,8 @@ def build_synastry_page(ctx: dict) -> str:
 
     p1_name = persons[0].get("name", "命主一") if persons else "命主一"
     p2_name = persons[1].get("name", "命主二") if len(persons) > 1 else "命主二"
+    synastry["_p1_name"] = p1_name
+    synastry["_p2_name"] = p2_name
     summary_line = synastry.get("compatibility_summary_line", "")
     title = meta.get("title", f"{p1_name} × {p2_name} 合盘")
 
@@ -1197,7 +1298,7 @@ def build_synastry_page(ctx: dict) -> str:
       <h2 class="section-title">合盘总评</h2>
       <div class="overall-card"><p>{overall}</p></div>
     </section>""" if overall else ""
-    scenarios_html = render_scenario_tabs(synastry)
+    scenarios_html = render_communication_guide(synastry)
 
     # 底部折叠完整命盘
     full_html = ""
@@ -1716,6 +1817,13 @@ details[open] .sd-detail-toggle::before { content: '▼ '; }
 .sum-dayun { font-size: .8rem;  color: var(--color-ink-muted); }
 .sum-signs { font-size: .82rem; color: var(--color-ink-secondary); margin: 8px 0; }
 .sum-inner { font-size: .82rem; color: var(--color-ink-secondary); line-height: 1.7; margin-top: 8px; }
+.full-detail-btn {
+  display:inline-block; margin-top:10px; padding:4px 14px;
+  background:transparent; border:1px solid var(--color-gold);
+  color:var(--color-gold); border-radius:4px; font-size:.78rem;
+  cursor:pointer; transition:background .2s,color .2s; font-family:inherit;
+}
+.full-detail-btn:hover { background:var(--color-gold); color:#fff8ee; }
 .full-detail { margin-top: 12px; }
 .full-detail summary { font-size: .8rem; color: var(--color-gold); cursor: pointer; }
 
@@ -1764,6 +1872,19 @@ details[open] .sd-detail-toggle::before { content: '▼ '; }
   .pillars-row { gap: 6px; }
   .pillar-ganzhi { font-size: 1rem; }
 }
+
+/* ── 关系指南 ── */
+.guide-friction { font-size:.85rem; color:var(--color-ink-secondary); background:var(--color-bg-card);
+  border-left:3px solid var(--color-gold); padding:.6rem 1rem; border-radius:4px; margin-bottom:1rem; }
+.guide-cols { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem; }
+@media(max-width:600px){ .guide-cols { grid-template-columns:1fr; } }
+.guide-col h4 { font-size:.85rem; color:var(--color-gold); margin-bottom:.5rem; }
+.guide-col ul { margin:0; padding-left:1.2rem; }
+.guide-col li { font-size:.83rem; color:var(--color-ink-secondary); line-height:1.7; margin-bottom:.3rem; }
+.guide-window { font-size:.82rem; color:var(--color-ink-secondary); margin:.6rem 0;
+  background:#f5f0e8; padding:.5rem .9rem; border-radius:4px; }
+.guide-reconcile { border-left:3px solid var(--color-accent-jade); padding:.6rem 1.1rem;
+  margin:1rem 0 0; font-style:italic; color:var(--color-ink-secondary); font-size:.88rem; }
 """
 
 _JS = """
