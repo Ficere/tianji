@@ -1308,6 +1308,355 @@ def render_synastry_scores(synastry: dict) -> str:
     </section>"""
 
 
+
+import json as _json
+
+def render_relation_matrix(persons: list, synastry: dict) -> str:
+    """
+    渲染关系矩阵图（适用于双人/多人合盘）。
+    双视图：① 上三角热力矩阵表（快速总览）② 力导向关系网络图（D3.js）
+    数据来源：synastry.relation_matrix 列表，每项含 a, b, total, sx_rel, rz_rel, type, note。
+    若 relation_matrix 不存在则自动从 shengxiao_matrix 推导基础版。
+    """
+    if not persons or len(persons) < 2:
+        return ""
+
+    names = [p.get("name", "") for p in persons]
+    n = len(names)
+
+    # ── 获取或推导关系对列表 ────────────────────────────────────────────────
+    pairs_raw = synastry.get("relation_matrix", [])
+    if not pairs_raw:
+        good = synastry.get("shengxiao_matrix", {}).get("good", [])
+        tension = synastry.get("shengxiao_matrix", {}).get("tension", [])
+        pair_map = {}
+        for g in good:
+            raw_pair = g.get("pair", "")
+            score_str = str(g.get("score", "+3")).strip()
+            try:
+                score = int(score_str.lstrip("+"))
+            except ValueError:
+                score = 3
+            a, b = _extract_pair_names(raw_pair, names)
+            if a and b:
+                ptype = "strong_pull" if score >= 9 else ("pull" if score >= 6 else "neutral")
+                pair_map[(a, b)] = {"a": a, "b": b, "total": score, "sx_rel": g.get("relation", ""), "rz_rel": "", "note": g.get("note", ""), "type": ptype}
+        for t in tension:
+            raw_pair = t.get("pair", "")
+            score_str = str(t.get("score", "-2")).strip()
+            try:
+                score = int(score_str)
+            except ValueError:
+                score = -2
+            a, b = _extract_pair_names(raw_pair, names)
+            if a and b:
+                ptype = "strong_tension" if score <= -5 else ("tension" if score <= -3 else "mild_tension")
+                pair_map[(a, b)] = {"a": a, "b": b, "total": score, "sx_rel": t.get("relation", ""), "rz_rel": "", "note": t.get("note", ""), "type": ptype}
+        for i in range(n):
+            for j in range(i + 1, n):
+                key = (names[i], names[j])
+                rkey = (names[j], names[i])
+                if key not in pair_map and rkey not in pair_map:
+                    pair_map[key] = {"a": names[i], "b": names[j], "total": 3, "sx_rel": "平和", "rz_rel": "", "note": "", "type": "neutral"}
+        pairs_raw = list(pair_map.values())
+
+    # ── 建立查找字典 ─────────────────────────────────────────────────────────
+    pair_dict = {}
+    for p in pairs_raw:
+        key = (p.get("a", ""), p.get("b", ""))
+        pair_dict[key] = p
+        pair_dict[(key[1], key[0])] = p
+
+    TYPE_META = {
+        "strong_pull":    {"color": "#2d7a4f", "bg": "#d4f0e2", "label": "强引力",   "dot": "◉"},
+        "pull":           {"color": "#3d7a5a", "bg": "#e8f5ee", "label": "引力",     "dot": "◎"},
+        "neutral":        {"color": "#8b6820", "bg": "#f5f0e0", "label": "平和",     "dot": "○"},
+        "mild_tension":   {"color": "#a05820", "bg": "#fdf0e0", "label": "轻度张力", "dot": "◈"},
+        "tension":        {"color": "#9b3020", "bg": "#fde8e4", "label": "张力",     "dot": "◆"},
+        "strong_tension": {"color": "#7b1810", "bg": "#fad0ca", "label": "强张力",   "dot": "◆◆"},
+    }
+
+    def get_pair(a, b):
+        return pair_dict.get((a, b)) or pair_dict.get((b, a))
+
+    def get_type(a, b):
+        p = get_pair(a, b)
+        return p.get("type", "neutral") if p else "neutral"
+
+    def get_total(a, b):
+        p = get_pair(a, b)
+        return p.get("total", 3) if p else 3
+
+    def get_rel_label(a, b):
+        p = get_pair(a, b)
+        if not p:
+            return "平和"
+        parts = [x for x in [p.get("sx_rel", ""), p.get("rz_rel", "")] if x]
+        return "·".join(parts[:2]) if parts else "平和"
+
+    def get_note(a, b):
+        p = get_pair(a, b)
+        return p.get("note", "") if p else ""
+
+    # ── ① 上三角矩阵表 ────────────────────────────────────────────────────────
+    col_label = lambda nm: nm[0] if n > 5 else nm
+    header_cells = "".join(
+        f'<th class="matrix-col-head" title="{nm}">{col_label(nm)}</th>' for nm in names
+    )
+    rows_html = ""
+    for i, row_name in enumerate(names):
+        cells = f'<th class="matrix-row-head">{row_name}</th>'
+        for j, col_name in enumerate(names):
+            if j < i:
+                cells += '<td class="matrix-cell matrix-cell-empty"></td>'
+            elif j == i:
+                cells += f'<td class="matrix-cell matrix-cell-self"><span class="matrix-self-dot">●</span></td>'
+            else:
+                ptype = get_type(row_name, col_name)
+                total = get_total(row_name, col_name)
+                rel = get_rel_label(row_name, col_name)
+                note = get_note(row_name, col_name)
+                meta = TYPE_META.get(ptype, TYPE_META["neutral"])
+                sign = "+" if total >= 0 else ""
+                tooltip_parts = [f"{row_name}×{col_name}", rel]
+                if note:
+                    tooltip_parts.append(note)
+                tooltip = "\n".join(tooltip_parts)
+                cells += (
+                    f'<td class="matrix-cell matrix-cell-data" '
+                    f'style="background:{meta["bg"]};" '
+                    f'data-a="{row_name}" data-b="{col_name}" '
+                    f'title="{tooltip}">'
+                    f'<span class="matrix-dot" style="color:{meta["color"]};">{meta["dot"]}</span>'
+                    f'<span class="matrix-score" style="color:{meta["color"]};">{sign}{total}</span>'
+                    f'</td>'
+                )
+        rows_html += f"<tr>{cells}</tr>\n"
+
+    legend_html = "".join(
+        f'<span class="matrix-legend-item"><span style="color:{m["color"]};">{m["dot"]}</span> {m["label"]}</span>'
+        for m in TYPE_META.values()
+    )
+
+    # ── ② 力导向图数据 ────────────────────────────────────────────────────────
+    nodes_json = _json.dumps([{"id": nm, "idx": i} for i, nm in enumerate(names)], ensure_ascii=False)
+    links_data = []
+    for p in pairs_raw:
+        a, b, total = p.get("a", ""), p.get("b", ""), p.get("total", 3)
+        ptype = p.get("type", "neutral")
+        meta = TYPE_META.get(ptype, TYPE_META["neutral"])
+        sx = p.get("sx_rel", "")
+        rz = p.get("rz_rel", "")
+        rel_parts = [x for x in [sx, rz] if x and x != "平和"]
+        rel_label = "·".join(rel_parts) if rel_parts else (sx or "平和")
+        links_data.append({
+            "source": a, "target": b,
+            "total": total, "type": ptype,
+            "color": meta["color"],
+            "label": rel_label,
+            "note": p.get("note", "")
+        })
+    links_json = _json.dumps(links_data, ensure_ascii=False)
+
+    uid = f"rm{abs(hash(str(names))) % 100000}"
+
+    return f"""
+    <section class="report-section" id="relation-matrix-{uid}">
+      <h2 class="section-title">关系矩阵图</h2>
+
+      <div class="matrix-legend">{legend_html}</div>
+
+      <div class="matrix-table-wrap">
+        <table class="matrix-table" id="mtable-{uid}">
+          <thead><tr><th class="matrix-corner"></th>{header_cells}</tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+      </div>
+
+      <div class="matrix-tooltip" id="mtooltip-{uid}"></div>
+
+      <div class="matrix-network-wrap">
+        <div class="matrix-network-title">关系网络图 <span class="matrix-network-hint">（节点可拖动）</span></div>
+        <svg id="network-{uid}" class="matrix-network-svg" width="100%" height="460"></svg>
+      </div>
+
+    </section>
+
+    <style>
+    .matrix-legend{{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px;font-size:.78rem}}
+    .matrix-legend-item{{display:flex;align-items:center;gap:4px;color:var(--color-ink-secondary,#6b5a47)}}
+    .matrix-table-wrap{{overflow-x:auto;margin-bottom:20px}}
+    .matrix-table{{border-collapse:collapse;width:100%}}
+    .matrix-table th,.matrix-table td{{border:1px solid var(--color-border,#e4d5bc)}}
+    .matrix-corner{{background:var(--color-bg-page,#faf7f2);width:28px;min-width:28px}}
+    .matrix-col-head{{background:#1a1410;color:#e8c47a;font-size:.78rem;padding:6px 8px;text-align:center;min-width:64px}}
+    .matrix-row-head{{background:#1a1410;color:#e8c47a;font-size:.78rem;padding:6px 10px;text-align:right;white-space:nowrap}}
+    .matrix-cell{{text-align:center;cursor:default;transition:filter .15s;padding:0}}
+    .matrix-cell:hover{{filter:brightness(.88);cursor:pointer}}
+    .matrix-cell-empty{{background:var(--color-bg-page,#faf7f2)}}
+    .matrix-cell-self{{background:#1a1410;vertical-align:middle;text-align:center}}
+    .matrix-self-dot{{color:#3a2810;font-size:1em}}
+    .matrix-cell-data{{padding:6px 4px}}
+    .matrix-dot{{display:block;font-size:1em;line-height:1.2}}
+    .matrix-score{{display:block;font-size:.7rem;font-weight:700}}
+    .matrix-network-wrap{{background:#0f0c08;border-radius:4px;padding:14px;margin-top:4px}}
+    .matrix-network-title{{color:#e8c47a;font-size:.82rem;margin-bottom:8px;letter-spacing:.1em}}
+    .matrix-network-hint{{color:#6b5a47;font-size:.72rem}}
+    .matrix-network-svg{{display:block}}
+    .matrix-tooltip{{position:fixed;background:#1a1410;color:#e8c47a;padding:8px 12px;border-radius:4px;font-size:.78rem;line-height:1.7;pointer-events:none;opacity:0;transition:opacity .15s;max-width:220px;z-index:9999;border:1px solid #4a3a20;white-space:pre-line}}
+    </style>
+
+    <script>
+    (function(){{
+      var tip = document.getElementById('mtooltip-{uid}');
+      document.querySelectorAll('#mtable-{uid} .matrix-cell-data').forEach(function(cell){{
+        cell.addEventListener('mouseenter', function(e){{
+          tip.textContent = cell.getAttribute('title') || '';
+          tip.style.opacity = '1';
+          tip.style.left = (e.clientX + 14) + 'px';
+          tip.style.top  = (e.clientY - 8)  + 'px';
+        }});
+        cell.addEventListener('mousemove', function(e){{
+          tip.style.left = (e.clientX + 14) + 'px';
+          tip.style.top  = (e.clientY - 8)  + 'px';
+        }});
+        cell.addEventListener('mouseleave', function(){{
+          tip.style.opacity = '0';
+        }});
+      }});
+
+      var NODES = {nodes_json};
+      var LINKS = {links_json};
+
+      function drawNetwork(){{
+        var container = document.getElementById('network-{uid}');
+        if (!container) return;
+        var W = container.clientWidth || 640;
+        var H = 460;
+        container.setAttribute('height', H);
+
+        var NCOLS = ['#c9973a','#a07840','#8b6040','#6b4830','#4a3020','#3a2810','#5a4030'];
+
+        var svg = d3.select('#network-{uid}');
+        svg.selectAll('*').remove();
+
+        var sim = d3.forceSimulation(NODES)
+          .force('link', d3.forceLink(LINKS).id(function(d){{ return d.id; }})
+            .distance(function(l){{
+              if (l.total >= 8) return 80;
+              if (l.total >= 5) return 110;
+              if (l.total >= 0) return 150;
+              return 200;
+            }})
+            .strength(function(l){{ return l.total >= 0 ? 0.4 : 0.12; }}))
+          .force('charge', d3.forceManyBody().strength(-300))
+          .force('center', d3.forceCenter(W / 2, H / 2))
+          .force('collision', d3.forceCollide(40));
+
+        var link = svg.append('g')
+          .selectAll('line').data(LINKS).enter().append('line')
+          .attr('stroke', function(d){{ return d.color; }})
+          .attr('stroke-width', function(d){{
+            var t = Math.abs(d.total);
+            return t >= 8 ? 3.5 : t >= 5 ? 2.5 : t >= 2 ? 1.5 : 1;
+          }})
+          .attr('stroke-opacity', function(d){{
+            var t = Math.abs(d.total);
+            return t >= 5 ? 0.9 : t >= 2 ? 0.6 : 0.3;
+          }})
+          .attr('stroke-dasharray', function(d){{ return d.total < 0 ? '6,4' : null; }});
+
+        var linkLabel = svg.append('g')
+          .selectAll('text')
+          .data(LINKS.filter(function(d){{ return Math.abs(d.total) >= 4; }}))
+          .enter().append('text')
+          .attr('font-size', 10)
+          .attr('fill', function(d){{ return d.color; }})
+          .attr('text-anchor', 'middle')
+          .attr('dy', -4)
+          .attr('font-family', 'Noto Serif SC, serif')
+          .text(function(d){{
+            return d.label + ' ' + (d.total >= 0 ? '+' : '') + d.total;
+          }});
+
+        var node = svg.append('g')
+          .selectAll('g').data(NODES).enter().append('g')
+          .call(d3.drag()
+            .on('start', function(event, d){{
+              if (!event.active) sim.alphaTarget(.3).restart();
+              d.fx = d.x; d.fy = d.y;
+            }})
+            .on('drag', function(event, d){{ d.fx = event.x; d.fy = event.y; }})
+            .on('end', function(event, d){{
+              if (!event.active) sim.alphaTarget(0);
+              d.fx = null; d.fy = null;
+            }}));
+
+        node.append('circle')
+          .attr('r', 28)
+          .attr('fill', '#14100a')
+          .attr('stroke', function(d){{ return NCOLS[d.idx % NCOLS.length]; }})
+          .attr('stroke-width', 2.5);
+
+        node.append('text')
+          .attr('text-anchor', 'middle').attr('dy', '.35em')
+          .attr('font-size', 12).attr('fill', '#e8c47a')
+          .attr('font-family', 'Noto Serif SC, serif')
+          .text(function(d){{ return d.id.length <= 2 ? d.id : d.id.slice(0, 2); }});
+
+        node.append('title').text(function(d){{
+          var lines = [d.id];
+          LINKS.forEach(function(l){{
+            var src = typeof l.source === 'object' ? l.source.id : l.source;
+            var tgt = typeof l.target === 'object' ? l.target.id : l.target;
+            var other = src === d.id ? tgt : (tgt === d.id ? src : null);
+            if (other) lines.push('× ' + other + '  ' + l.label + ' ' + (l.total >= 0 ? '+' : '') + l.total);
+          }});
+          return lines.join('\\n');
+        }});
+
+        sim.on('tick', function(){{
+          var pad = 36;
+          link
+            .attr('x1', function(d){{ return Math.max(pad, Math.min(W-pad, d.source.x)); }})
+            .attr('y1', function(d){{ return Math.max(pad, Math.min(H-pad, d.source.y)); }})
+            .attr('x2', function(d){{ return Math.max(pad, Math.min(W-pad, d.target.x)); }})
+            .attr('y2', function(d){{ return Math.max(pad, Math.min(H-pad, d.target.y)); }});
+          linkLabel
+            .attr('x', function(d){{
+              var sx = typeof d.source==='object' ? d.source.x : 0;
+              var tx = typeof d.target==='object' ? d.target.x : 0;
+              return (sx + tx) / 2;
+            }})
+            .attr('y', function(d){{
+              var sy = typeof d.source==='object' ? d.source.y : 0;
+              var ty = typeof d.target==='object' ? d.target.y : 0;
+              return (sy + ty) / 2;
+            }});
+          node.attr('transform', function(d){{
+            return 'translate(' + Math.max(pad,Math.min(W-pad,d.x)) + ',' + Math.max(pad,Math.min(H-pad,d.y)) + ')';
+          }});
+        }});
+      }}
+
+      if (typeof d3 === 'undefined') {{
+        var s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js';
+        s.onload = drawNetwork;
+        document.head.appendChild(s);
+      }} else {{
+        drawNetwork();
+      }}
+    }})();
+    </script>"""
+
+
+def _extract_pair_names(raw_pair: str, names: list):
+    """从 '郭律均(戌)×娄江溶(卯)' 格式中提取两个姓名"""
+    found = [nm for nm in names if nm in raw_pair]
+    return (found[0], found[1]) if len(found) >= 2 else (None, None)
+
+
 def render_communication_guide(synastry: dict) -> str:
     """渲染关系指南 section（沟通要点 + 关系发展建议）"""
     guide = synastry.get("communication_guide", {})
@@ -1457,6 +1806,9 @@ def build_synastry_page(ctx: dict) -> str:
     </section>""" if overall else ""
     scenarios_html = render_communication_guide(synastry)
 
+    # 关系矩阵图
+    matrix_html = render_relation_matrix(persons, synastry)
+
     # 底部折叠完整命盘
     full_html = ""
     for p_idx, p in enumerate(persons, start=1):
@@ -1481,6 +1833,7 @@ def build_synastry_page(ctx: dict) -> str:
         scores_html,
         overall_html,
         scenarios_html,
+        matrix_html,
         full_section,
     ])
 

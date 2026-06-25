@@ -768,6 +768,41 @@ combo = _zodiac_combo_reading(sun_sign, moon_sign, rising_sign)
 - `window`：结合双方当前大限主题，说明现在处于什么时间窗口（黄金期/考验期/转变期等）
 - `scenario_advice`：4个Tab，每个 `advice` 字段约80-120字，含具体可操作建议
 
+**关系矩阵图规范（所有2人+合盘必须输出）：**
+
+合盘 reading.json 的 `synastry.relation_matrix` 字段为关系矩阵图的数据源。每项为一对关系，包含以下字段：
+
+```json
+"relation_matrix": [
+  {
+    "a": "郭律均",
+    "b": "娄江溶",
+    "sx_rel": "六合",
+    "rz_rel": "相克",
+    "total": 8,
+    "type": "pull",
+    "note": "结构性互补，研发与落地之间天然的桥梁"
+  }
+]
+```
+
+**type 枚举值（按 total 分值区间）：**
+
+| type | total 范围 | 含义 |
+|------|-----------|------|
+| `strong_pull` | ≥9 | 强引力 |
+| `pull` | 6–8 | 引力 |
+| `neutral` | 3–5 | 平和 |
+| `mild_tension` | 0–2 | 轻度张力 |
+| `tension` | -4–-1 | 张力 |
+| `strong_tension` | ≤-5 | 强张力 |
+
+**total 计分口径：** 生肖关系分（六合+7/三合+5/六冲-5/相害-3/相刑-2/平和+2）＋日主天干关系分（天干合+7/比和+4/相生+3/相克+1）
+
+**渲染函数：** `render_relation_matrix(persons, synastry)` — 自动输出①上三角热力矩阵表（快速总览）+②D3力导向关系网络图（节点可拖动）。
+
+**兼容说明：** 若 `relation_matrix` 字段不存在，渲染器自动从 `shengxiao_matrix.good/tension` 推导基础版（仅生肖维度）。推荐在构建 reading.json 时完整计算并填入 `relation_matrix`。
+
 将报告保存为 Markdown 文件并分享给用户。
 
 ### 第十一步：生成 reading.json 结构化输出
