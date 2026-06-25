@@ -997,38 +997,14 @@ def render_sketch_section(person: dict) -> str:
 def render_confidence_section(person: dict) -> str:
     ct = person.get("confidence_table", {})
     notes = ct.get("confidence_notes", "")
-
-    rows = [
-        ("bazi",               "八字四柱"),
-        ("ziwei",              "紫微斗数"),
-        ("western_astro",      "西洋星座"),
-        ("bone_weight",        "称骨算命"),
-        ("name_analysis",      "三才五格"),
-        ("personality_sketch", "人格速写"),
-    ]
-    rows_html = ""
-    for key, label in rows:
-        val = ct.get(key)
-        if val is None:
-            continue
-        rows_html += f"""
-        <tr>
-          <td class="conf-label">{label}</td>
-          <td class="conf-stars">{render_star_rating(val)}</td>
-          <td class="conf-val">{val:.1f}</td>
-        </tr>"""
-
-    notes_html = f'<p class="conf-notes">{notes}</p>' if notes else ""
-
-    return f"""
-    <section class="report-section" id="confidence">
-      <h2 class="section-title">置信度评级</h2>
-      <table class="conf-table">
-        <thead><tr><th>维度</th><th>置信度</th><th>评分</th></tr></thead>
-        <tbody>{rows_html}</tbody>
-      </table>
-      {notes_html}
-    </section>"""
+    if not notes:
+        return ""
+    return (
+        f'<section class="report-section" id="confidence">'
+        f'<h2 class="section-title">置信度说明</h2>'
+        f'<p class="conf-notes">{notes}</p>'
+        f'</section>'
+    )
 
 
 def render_person_full(person: dict) -> str:
@@ -1704,9 +1680,7 @@ details[open] .sd-detail-toggle::before { content: '▼ '; }
 .mbti-note p { font-size: .88rem; color: var(--color-ink-secondary); }
 
 /* ── Confidence ── */
-.conf-table { width: 100%; border-collapse: collapse; }
-.conf-table th, .conf-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--color-border); }
-.conf-table th { font-size: .78rem; color: var(--color-ink-muted); font-weight: normal; }
+.conf-notes { font-size: 13px; color: #555; line-height: 1.9; }
 .conf-label { font-size: .88rem; }
 .conf-stars { display: flex; gap: 2px; }
 .conf-val   { font-size: .82rem; color: var(--color-ink-muted); }
