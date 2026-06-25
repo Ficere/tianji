@@ -296,51 +296,266 @@ def render_bone_section(person: dict) -> str:
 
 def render_ziwei_section(person: dict) -> str:
     zw = person.get("ziwei", {})
-    star = zw.get("life_palace_star", "")
-    pattern = zw.get("pattern", "")
-    empty = zw.get("life_palace_empty", False)
-    empty_note = zw.get("empty_palace_note", "")
-    dayun = zw.get("current_dayun", {})
-    sihua = zw.get("sihua_summary", "")
-    analysis = zw.get("overall_analysis", "")
 
-    empty_html = ""
-    if empty and empty_note:
-        empty_html = f'<div class="empty-palace-note">⚠️ 空宫：{empty_note}</div>'
+    # ── 基础数据 ─────────────────────────────────────────────
+    life_palace      = zw.get("life_palace", "")
+    life_star        = zw.get("life_palace_star", "")
+    body_palace      = zw.get("body_palace", "")
+    wuxing_ju        = zw.get("wuxing_ju", "")
+    life_master      = zw.get("life_master", "")
+    body_master      = zw.get("body_master", "")
+    dayun_dir        = zw.get("dayun_direction", "顺行")
+    pattern          = zw.get("pattern", "")
+    overall          = zw.get("overall_analysis", "")
 
-    dayun_html = ""
-    if dayun:
-        age = dayun.get("age_range", "")
-        palace = dayun.get("palace", "")
-        dstar = dayun.get("star", "")
-        dinterp = dayun.get("interpretation", "")
-        dayun_html = f"""
-        <div class="dayun-card">
-          <div class="dayun-header">
-            <span class="dayun-badge">当前大限</span>
-            <span class="dayun-age">{age}</span>
-            <span class="dayun-palace">{palace} · {dstar}</span>
-          </div>
-          <p class="dayun-interp">{dinterp}</p>
-        </div>"""
+    palace_stars = zw.get("twelve_palaces_stars", {})
+    palace_zhi   = zw.get("twelve_palaces_zhi", {})
+    sihua_detail = zw.get("sihua_detail", {})
+    dayun_seq    = zw.get("dayun_sequence", [])
+    current_dayun = zw.get("current_dayun", {})
+    current_age_range = current_dayun.get("age_range", "")
+    palace_readings = zw.get("palace_readings", {})
 
-    return f"""
-    <section class="report-section" id="ziwei">
-      <h2 class="section-title">紫微斗数</h2>
-      <div class="ziwei-header">
-        <div class="ziwei-star-block">
-          <span class="ziwei-star-label">命宫主星</span>
-          <span class="ziwei-star-name">{star}</span>
-        </div>
-        <div class="ziwei-pattern">{pattern}</div>
-      </div>
-      {empty_html}
-      {dayun_html}
-      <div class="ziwei-analysis">
-        <p class="analysis-sub">四化速览：{sihua}</p>
-        <p class="analysis-text">{analysis}</p>
-      </div>
-    </section>"""
+    # ── 四化星标记 ───────────────────────────────────────────
+    sihua_mark = {}
+    sihua_colors = {"化禄": "#c9973a", "化权": "#c0392b", "化科": "#2980b9", "化忌": "#7f8c8d"}
+    for tag, info in sihua_detail.items():
+        star = info.get("星曜", "")
+        if star:
+            sihua_mark.setdefault(star, []).append(tag)
+
+    MAIN_STARS = {
+        "紫微","天机","太阳","武曲","天同","廉贞",
+        "天府","太阴","贪狼","巨门","天相","天梁","七杀","破军"
+    }
+
+    def classify_stars(stars):
+        main, aux = [], []
+        for s in stars:
+            (main if s in MAIN_STARS else aux).append(s)
+        return main, aux
+
+    def star_badge(s, small=False):
+        tags = sihua_mark.get(s, [])
+        suffix = ""
+        for t in tags:
+            col = sihua_colors.get(t, "#888")
+            suffix += f'<span class="ziwei-sihua-tag" style="background:{col}">{t[1]}</span>'
+        cls = "ziwei-star-badge-sm" if small else "ziwei-star-badge"
+        return f'<span class="{cls}">{s}{suffix}</span>'
+
+    # ── 十二宫网格 ───────────────────────────────────────────
+    PALACE_ORDER = [
+        "命宫","兄弟宫","夫妻宫","子女宫",
+        "财帛宫","疾厄宫","迁移宫","交友宫",
+        "官禄宫","田宅宫","福德宫","父母宫"
+    ]
+
+    def render_palace_cell(pname):
+        zhi   = palace_zhi.get(pname, "")
+        stars = palace_stars.get(pname, [])
+        main, aux = classify_stars(stars)
+        is_life = (pname == "命宫")
+        body_ref = body_palace or ""
+        is_body = ("福德宫" in pname and "福德" in body_ref) or \
+                  ("亥宫" in body_ref and "福德" in pname)
+        is_curr_dayun = current_dayun.get("palace", "") == pname
+        has_reading   = pname in palace_readings
+
+        cell_class = "ziwei-cell"
+        if is_life:        cell_class += " cell-life"
+        if is_body:        cell_class += " cell-body"
+        if is_curr_dayun:  cell_class += " cell-curr-dayun"
+        if has_reading:    cell_class += " cell-has-reading"
+
+        markers = ""
+        if is_life:       markers += '<span class="cell-marker marker-life">命</span>'
+        if is_body:       markers += '<span class="cell-marker marker-body">身</span>'
+        if is_curr_dayun: markers += '<span class="cell-marker marker-dayun">限</span>'
+
+        main_html = "".join(star_badge(s) for s in main) if main else '<span class="ziwei-empty-cell">空宫</span>'
+        aux_html  = "".join(star_badge(s, small=True) for s in aux)
+        aux_block = f'<div class="cell-aux-stars">{aux_html}</div>' if aux else ""
+
+        return (
+            f'<div class="{cell_class}">'
+            f'<div class="cell-header">'
+            f'<span class="cell-zhi">{zhi}</span>'
+            f'<span class="cell-name">{pname}</span>'
+            f'{markers}</div>'
+            f'<div class="cell-main-stars">{main_html}</div>'
+            f'{aux_block}'
+            f'</div>'
+        )
+
+    grid_cells = "\n".join(render_palace_cell(p) for p in PALACE_ORDER)
+
+    # ── 四化卡片 ─────────────────────────────────────────────
+    sihua_card_defs = [
+        ("化禄","#c9973a","禄","财源·流动·吉运","事业与财运的顺势助力，所在宫位有积累或机遇"),
+        ("化权","#c0392b","权","权势·控制·决断","强势能量加持，所在宫位主导权增强，也带来张力"),
+        ("化科","#2980b9","科","声誉·智慧·贵气","名声与才华加持，所在宫位有文昌之气"),
+        ("化忌","#7f8c8d","忌","功课·阻碍·反复","一生反复的课题，所在宫位需要主动经营"),
+    ]
+
+    def render_sihua_card(tag, color, short, meaning, desc):
+        info   = sihua_detail.get(tag, {})
+        star   = info.get("星曜", "—")
+        zhi    = info.get("所在地支", "—")
+        palace = info.get("所在宫位", "—")
+        pr     = palace_readings.get(palace, {})
+        pr_txt = pr.get("reading", "") if pr else ""
+        snippet = (pr_txt[:80] + "…") if len(pr_txt) > 80 else pr_txt
+        snip_html = f'<div class="sihua-palace-snippet">「{palace}」：{snippet}</div>' if snippet else ""
+        return (
+            f'<div class="sihua-card" style="border-left:3px solid {color}">'
+            f'<div class="sihua-card-header">'
+            f'<span class="sihua-badge" style="background:{color}">{short}</span>'
+            f'<span class="sihua-tag-name" style="color:{color}">{tag}</span>'
+            f'<span class="sihua-star">→ {star}</span>'
+            f'<span class="sihua-palace">落 {palace}（{zhi}宫）</span>'
+            f'</div>'
+            f'<div class="sihua-meaning">{meaning}</div>'
+            f'<div class="sihua-desc">{desc}</div>'
+            f'{snip_html}'
+            f'</div>'
+        )
+
+    sihua_cards_html = "\n".join(
+        render_sihua_card(tag, color, short, meaning, desc)
+        for tag, color, short, meaning, desc in sihua_card_defs
+        if tag in sihua_detail
+    )
+
+    # ── 大限时间轴 ────────────────────────────────────────────
+    def render_dayun_timeline():
+        items = []
+        for d in dayun_seq:
+            rng    = d.get("年龄范围", "")
+            palace = d.get("宫位", "")
+            zhi    = d.get("地支", "")
+            stars  = d.get("主星", [])
+            stars_str = "·".join(stars) if stars else "空宫"
+            is_curr = (rng == current_age_range)
+            cls = "dayun-item dayun-curr" if is_curr else "dayun-item"
+            curr_lbl = '<span class="dayun-curr-tag">▶ 当前</span>' if is_curr else ""
+            items.append(
+                f'<div class="{cls}">'
+                f'<div class="dayun-rng">{rng}{curr_lbl}</div>'
+                f'<div class="dayun-dot"></div>'
+                f'<div class="dayun-info">'
+                f'<span class="dayun-palace-nm">{palace}</span>'
+                f'<span class="dayun-zhi-nm">（{zhi}）</span>'
+                f'<span class="dayun-stars-nm">{stars_str}</span>'
+                f'</div></div>'
+            )
+        return f'<div class="dayun-timeline">{"".join(items)}</div>'
+
+    timeline_html = render_dayun_timeline()
+
+    curr_interp = current_dayun.get("interpretation", "")
+    if curr_interp:
+        cp = current_dayun.get("palace", "")
+        cs = current_dayun.get("star", "")
+        curr_dayun_detail = (
+            f'<div class="curr-dayun-detail">'
+            f'<div class="curr-dayun-label">当前大限深度解读 · {current_age_range} · {cp} · {cs}</div>'
+            f'<p class="curr-dayun-text">{curr_interp}</p>'
+            f'</div>'
+        )
+    else:
+        curr_dayun_detail = ""
+
+    # ── 六宫深度解读 ──────────────────────────────────────────
+    SIX_PALACES = ["命宫","财帛宫","官禄宫","夫妻宫","疾厄宫","迁移宫"]
+    SIX_ICONS   = {"命宫":"☯","财帛宫":"◈","官禄宫":"▲","夫妻宫":"♡","疾厄宫":"◉","迁移宫":"◎"}
+    SIX_SUBS    = {
+        "命宫":"先天人格底色","财帛宫":"财富结构",
+        "官禄宫":"事业格局","夫妻宫":"亲密关系",
+        "疾厄宫":"健康倾向","迁移宫":"外部环境"
+    }
+
+    def render_prc(pname):
+        pr = palace_readings.get(pname, {})
+        if not pr:
+            return ""
+        stars_list = pr.get("stars", [])
+        zhi_c   = pr.get("zhi", "")
+        reading = pr.get("reading", "")
+        main, aux = classify_stars(stars_list)
+        stars_html = "".join(star_badge(s) for s in main)
+        stars_html += "".join(star_badge(s, small=True) for s in aux)
+        icon = SIX_ICONS.get(pname, "◆")
+        sub  = SIX_SUBS.get(pname, "")
+        return (
+            f'<div class="palace-reading-card">'
+            f'<div class="prc-header">'
+            f'<span class="prc-icon">{icon}</span>'
+            f'<div class="prc-title-block">'
+            f'<span class="prc-name">{pname}</span>'
+            f'<span class="prc-sub">{sub} · {zhi_c}宫</span>'
+            f'</div>'
+            f'<div class="prc-stars">{stars_html}</div>'
+            f'</div>'
+            f'<p class="prc-reading">{reading}</p>'
+            f'</div>'
+        )
+
+    six_readings_html = "\n".join(render_prc(p) for p in SIX_PALACES)
+
+    # ── 信息栏 ────────────────────────────────────────────────
+    body_short = body_palace.split("，")[0] if "，" in body_palace else body_palace
+    info_bar = (
+        f'<div class="ziwei-info-bar">'
+        f'<div class="zib-item"><span class="zib-label">命宫</span><span class="zib-val">{life_palace}</span></div>'
+        f'<div class="zib-item"><span class="zib-label">身宫</span><span class="zib-val">{body_short}</span></div>'
+        f'<div class="zib-item"><span class="zib-label">五行局</span><span class="zib-val">{wuxing_ju}</span></div>'
+        f'<div class="zib-item"><span class="zib-label">命主</span><span class="zib-val">{life_master}</span></div>'
+        f'<div class="zib-item"><span class="zib-label">身主</span><span class="zib-val">{body_master}</span></div>'
+        f'<div class="zib-item"><span class="zib-label">大运方向</span><span class="zib-val">{dayun_dir}</span></div>'
+        f'</div>'
+    )
+
+    overall_html = ""
+    if pattern or overall:
+        overall_html = (
+            f'<div class="ziwei-overall">'
+            f'<div class="ziwei-pattern-text">{pattern}</div>'
+            f'<p class="ziwei-overall-text">{overall}</p>'
+            f'</div>'
+        )
+
+    legend = (
+        '<div class="ziwei-legend">'
+        '<span class="legend-item"><span class="cell-marker marker-life" style="position:static;font-size:10px;padding:1px 4px;border-radius:3px">命</span> 命宫</span>'
+        '<span class="legend-item"><span class="cell-marker marker-body" style="position:static;font-size:10px;padding:1px 4px;border-radius:3px">身</span> 身宫</span>'
+        '<span class="legend-item"><span class="cell-marker marker-dayun" style="position:static;font-size:10px;padding:1px 4px;border-radius:3px">限</span> 当前大限</span>'
+        '<span class="legend-item"><span class="ziwei-sihua-tag" style="background:#c9973a;position:static">禄</span> 化禄</span>'
+        '<span class="legend-item"><span class="ziwei-sihua-tag" style="background:#c0392b;position:static">权</span> 化权</span>'
+        '<span class="legend-item"><span class="ziwei-sihua-tag" style="background:#2980b9;position:static">科</span> 化科</span>'
+        '<span class="legend-item"><span class="ziwei-sihua-tag" style="background:#7f8c8d;position:static">忌</span> 化忌</span>'
+        '</div>'
+    )
+
+    return (
+        f'<section class="report-section" id="ziwei">'
+        f'<h2 class="section-title">紫微斗数</h2>'
+        f'{info_bar}'
+        f'<h3 class="ziwei-sub-title">十二宫星曜</h3>'
+        f'<div class="ziwei-grid">{grid_cells}</div>'
+        f'{legend}'
+        f'<h3 class="ziwei-sub-title">四化飞星</h3>'
+        f'<div class="sihua-cards">{sihua_cards_html}</div>'
+        f'<h3 class="ziwei-sub-title">大限时间轴（{dayun_dir}）</h3>'
+        f'{timeline_html}'
+        f'{curr_dayun_detail}'
+        f'<h3 class="ziwei-sub-title">六宫深度解读</h3>'
+        f'<div class="palace-readings-grid">{six_readings_html}</div>'
+        f'<h3 class="ziwei-sub-title">命盘整体格局</h3>'
+        f'{overall_html}'
+        f'</section>'
+    )
+
 
 
 def render_western_section(person: dict) -> str:
@@ -1102,6 +1317,91 @@ body {
 .dayun-palace { font-size: .88rem; color: var(--color-ink); }
 .dayun-interp { font-size: .88rem; color: var(--color-ink-secondary); }
 .ziwei-analysis { margin-top: 8px; }
+
+/* ======= 紫微斗数细致排盘 CSS ======= */
+.ziwei-info-bar{display:flex;flex-wrap:wrap;gap:8px 18px;background:#faf3e6;border:1px solid #e8d9b8;border-radius:8px;padding:12px 16px;margin-bottom:20px}
+.zib-item{display:flex;align-items:center;gap:6px}
+.zib-label{font-size:11px;color:#888;font-weight:600;letter-spacing:.5px}
+.zib-val{font-size:13px;color:#1a1410;font-weight:700}
+
+.ziwei-sub-title{font-size:14px;font-weight:700;color:var(--color-gold);letter-spacing:1.5px;margin:22px 0 10px;padding-bottom:4px;border-bottom:1px solid #e8d9b8;text-transform:none}
+
+/* 十二宫网格 */
+.ziwei-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.ziwei-cell{background:#fff;border:1px solid #e0d4bf;border-radius:6px;padding:8px 10px;min-height:80px;position:relative;transition:box-shadow .15s}
+.ziwei-cell:hover{box-shadow:0 2px 8px rgba(201,151,58,.2)}
+.cell-life{border-color:var(--color-gold);background:#fffbf0}
+.cell-body{border-color:#8e6bbf;background:#faf7ff}
+.cell-curr-dayun{border-color:#e74c3c;background:#fff8f8}
+.cell-has-reading{box-shadow:inset 2px 0 0 var(--color-gold)}
+.cell-header{display:flex;align-items:center;gap:5px;margin-bottom:6px;flex-wrap:wrap}
+.cell-zhi{font-size:18px;font-weight:800;color:var(--color-gold);line-height:1}
+.cell-name{font-size:10px;color:#777;font-weight:600;letter-spacing:.5px}
+.cell-marker{position:absolute;top:5px;right:5px;font-size:9px;font-weight:800;padding:1px 4px;border-radius:3px;line-height:1.4}
+.marker-life{background:var(--color-gold);color:#fff}
+.marker-body{background:#8e6bbf;color:#fff}
+.marker-dayun{background:#e74c3c;color:#fff}
+.cell-main-stars{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px}
+.cell-aux-stars{display:flex;flex-wrap:wrap;gap:2px}
+.ziwei-star-badge{display:inline-flex;align-items:center;gap:2px;background:#faf3e6;border:1px solid #d4b896;color:#5c3d0e;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px}
+.ziwei-star-badge-sm{display:inline-flex;align-items:center;gap:1px;background:#f5f5f5;border:1px solid #ddd;color:#666;font-size:9px;padding:1px 4px;border-radius:3px}
+.ziwei-sihua-tag{display:inline-block;color:#fff;font-size:9px;font-weight:800;padding:0px 3px;border-radius:2px;margin-left:1px;position:relative;top:-1px}
+.ziwei-empty-cell{font-size:10px;color:#bbb;font-style:italic}
+.ziwei-legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:11px;color:#777;margin-bottom:16px;padding:8px 12px;background:#fafafa;border-radius:6px}
+.legend-item{display:flex;align-items:center;gap:4px}
+
+/* 四化卡片 */
+.sihua-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:4px}
+@media(max-width:600px){.sihua-cards{grid-template-columns:1fr}}
+.sihua-card{background:#fff;border-radius:8px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.sihua-card-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.sihua-badge{color:#fff;font-size:14px;font-weight:800;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.sihua-tag-name{font-size:13px;font-weight:700}
+.sihua-star{font-size:12px;color:#555}
+.sihua-palace{font-size:11px;color:#888;margin-left:auto}
+.sihua-meaning{font-size:11px;font-weight:600;color:#777;margin-bottom:4px}
+.sihua-desc{font-size:12px;color:#555;margin-bottom:6px}
+.sihua-palace-snippet{font-size:11px;color:#888;background:#f8f6f2;border-radius:4px;padding:5px 8px;line-height:1.5;border-left:2px solid #e0d4bf}
+
+/* 大限时间轴 */
+.dayun-timeline{display:flex;flex-direction:column;gap:0;margin-bottom:16px;padding:8px 0}
+.dayun-item{display:grid;grid-template-columns:100px 16px 1fr;align-items:center;gap:0 12px;padding:6px 0;border-bottom:1px solid #f0ebe0;font-size:12px}
+.dayun-item:last-child{border-bottom:none}
+.dayun-curr{background:#fffcf4;border-radius:6px;padding:8px 10px}
+.dayun-rng{color:#555;font-weight:600;font-size:11px;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.dayun-curr-tag{background:#c9973a;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:3px}
+.dayun-dot{width:8px;height:8px;border-radius:50%;background:#d4b896;flex-shrink:0;justify-self:center}
+.dayun-curr .dayun-dot{background:#c9973a;width:10px;height:10px}
+.dayun-info{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dayun-palace-nm{font-weight:700;color:#3a2a10}
+.dayun-zhi-nm{color:#888;font-size:11px}
+.dayun-stars-nm{color:var(--color-gold);font-size:11px;font-weight:600}
+.curr-dayun-detail{background:#fffbf0;border:1px solid #e8d9b8;border-radius:8px;padding:14px 16px;margin-bottom:16px}
+.curr-dayun-label{font-size:11px;font-weight:700;color:var(--color-gold);letter-spacing:.5px;margin-bottom:8px}
+.curr-dayun-text{font-size:13px;color:#3a2a10;line-height:1.8;margin:0}
+
+/* 六宫深度解读 */
+.palace-readings-grid{display:flex;flex-direction:column;gap:12px;margin-bottom:8px}
+.palace-reading-card{background:#fff;border:1px solid #e0d4bf;border-radius:8px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.prc-header{display:flex;align-items:flex-start;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.prc-icon{font-size:20px;flex-shrink:0;line-height:1.2}
+.prc-title-block{display:flex;flex-direction:column;gap:2px;min-width:100px}
+.prc-name{font-size:15px;font-weight:800;color:#1a1410}
+.prc-sub{font-size:10px;color:#999;letter-spacing:.5px}
+.prc-stars{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-left:auto}
+.prc-reading{font-size:13px;color:#3a2a10;line-height:1.85;margin:0}
+
+/* 整体格局 */
+.ziwei-overall{background:#faf3e6;border-radius:8px;padding:14px 16px;border:1px solid #e8d9b8}
+.ziwei-pattern-text{font-size:13px;font-weight:700;color:#3a2a10;margin-bottom:8px;line-height:1.7}
+.ziwei-overall-text{font-size:13px;color:#555;line-height:1.85;margin:0}
+
+/* 旧样式兜底 */
+.ziwei-header{display:none}
+.dayun-card{display:none}
+.ziwei-analysis{display:none}
+/* ======= 紫微斗数细致排盘 CSS END ======= */
+
 
 /* ── Western ── */
 .signs-row { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
