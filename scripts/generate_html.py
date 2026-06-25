@@ -1399,7 +1399,7 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
         return p.get("note", "") if p else ""
 
     # ── ① 上三角矩阵表 ────────────────────────────────────────────────────────
-    col_label = lambda nm: nm[0] if n > 5 else nm
+    col_label = lambda nm: nm  # 始终使用全名，不简写
     header_cells = "".join(
         f'<th class="matrix-col-head" title="{nm}">{col_label(nm)}</th>' for nm in names
     )
@@ -1410,7 +1410,7 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
             if j < i:
                 cells += '<td class="matrix-cell matrix-cell-empty"></td>'
             elif j == i:
-                cells += f'<td class="matrix-cell matrix-cell-self"><span class="matrix-self-dot">●</span></td>'
+                cells += f'<td class="matrix-cell matrix-cell-self"><span class="matrix-self-dot" style="color:#4a3a28;font-size:.72rem">{row_name}</span></td>'
             else:
                 ptype = get_type(row_name, col_name)
                 total = get_total(row_name, col_name)
@@ -1551,7 +1551,7 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
             .strength(function(l){{ return l.total >= 0 ? 0.4 : 0.12; }}))
           .force('charge', d3.forceManyBody().strength(-300))
           .force('center', d3.forceCenter(W / 2, H / 2))
-          .force('collision', d3.forceCollide(40));
+          .force('collision', d3.forceCollide(46));
 
         var link = svg.append('g')
           .selectAll('line').data(LINKS).enter().append('line')
@@ -1593,7 +1593,7 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
             }}));
 
         node.append('circle')
-          .attr('r', 28)
+          .attr('r', 32)
           .attr('fill', '#14100a')
           .attr('stroke', function(d){{ return NCOLS[d.idx % NCOLS.length]; }})
           .attr('stroke-width', 2.5);
@@ -1602,7 +1602,7 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
           .attr('text-anchor', 'middle').attr('dy', '.35em')
           .attr('font-size', 12).attr('fill', '#e8c47a')
           .attr('font-family', 'Noto Serif SC, serif')
-          .text(function(d){{ return d.id.length <= 2 ? d.id : d.id.slice(0, 2); }});
+          .text(function(d){{ return d.id; }});
 
         node.append('title').text(function(d){{
           var lines = [d.id];
@@ -1616,7 +1616,7 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
         }});
 
         sim.on('tick', function(){{
-          var pad = 36;
+          var pad = 40;
           link
             .attr('x1', function(d){{ return Math.max(pad, Math.min(W-pad, d.source.x)); }})
             .attr('y1', function(d){{ return Math.max(pad, Math.min(H-pad, d.source.y)); }})
