@@ -201,7 +201,7 @@ def render_hero(person: dict, is_synastry: bool = False) -> str:
     day_master = bazi.get("day_master", "")
     strength = bazi.get("strength", "")
     sketch = person.get("personality_sketch", {})
-    reconciliation = sketch.get("reconciliation_theme", "")
+    reconciliation = sketch.get("reconciliation_theme", "") or sketch.get("reconciliation", "")
 
     tags = []
     if day_master:
@@ -616,6 +616,62 @@ def render_ziwei_section(person: dict) -> str:
         "疾厄宫":"健康倾向","迁移宫":"外部环境"
     }
 
+    # 宫位视角句式模板：宫名 → 该领域核心问题
+    PALACE_QUESTION = {
+        "命宫":  "这个人本质上是谁？驱动力从哪里来？",
+        "财帛宫":"财富从哪里来，又容易从哪里漏出去？",
+        "官禄宫":"事业上天然擅长什么，又容易在哪里卡住？",
+        "夫妻宫":"亲密关系里他/她需要什么，又会带入什么结构性问题？",
+        "疾厄宫":"身体和能量管理的盲区在哪里？",
+        "迁移宫":"在外部世界、陌生环境中，他/她呈现什么能量？",
+    }
+
+    # 主星在各宫位的核心关键词（优势面，风险面，行动建议）
+    STAR_IN_PALACE = {
+        # (星, 宫) → (优势, 风险, 建议)
+        ("紫微","命宫"):  ("气场天成，自带领导力，决策有主见","过度自我，难以接受反馈，孤独感重","主动建立反馈机制，允许他人挑战自己"),
+        ("紫微","官禄宫"):("事业心强，适合独当一面，有整合资源的本能","容易以自我为中心，忽略团队协作","刻意培养授权能力，接受「不完美但高效」的执行"),
+        ("紫微","夫妻宫"):("对伴侣有高标准，亲密关系稳重","对等关系难，强势易压制对方","选择强独立性伴侣，避免形成控制-依附结构"),
+        ("紫微","迁移宫"):("在外场合气场出众，贵人缘佳","不主动开拓时容易等待机会上门","主动社交比等待机遇更有效"),
+        ("天机","命宫"):  ("思维活跃，善分析，适应力强","想多行少，容易原地分析瘫痪","给自己设定「分析截止时间」，强制执行"),
+        ("天机","官禄宫"):("策略型人才，适合顾问、规划类工作","频繁变更方向，难以深耕","择一方向专注3年以上，用深度换竞争壁垒"),
+        ("太阳","命宫"):  ("热情外放，能量感染力强，天然聚焦点","自我消耗过大，容易燃尽","定期关机补能，区分「我真正想要」与「我想让别人看到」"),
+        ("太阳","官禄宫"):("适合舞台型、外部曝光类职业，上进心强","虚荣心影响决策，在意他人评价","建立内驱型目标系统，减少外部评价的权重"),
+        ("太阳","财帛宫"):("能量大，创造财富速度快，慷慨","支出同样大，守财能力弱","收入10-20%强制锁仓，避免月光习惯"),
+        ("武曲","命宫"):  ("意志坚定，财气天生，执行力强","情感表达偏弱，给人强硬冷漠感","主动表达柔软面，减少不必要的刚性对立"),
+        ("武曲","财帛宫"):("正财运佳，踏实积累型","偏财运弱，投机类风险大","走稳健积累路线，避开高风险投机"),
+        ("武曲","官禄宫"):("适合金融、工程、管理类，执行力出众","与团队摩擦多，独断易失人心","主动倾听不同意见，不必每次都赢"),
+        ("天同","命宫"):  ("心态平和，压力耐受力强，适应性好","进取心不足，容易将就","定期重新审视目标，防止「差不多就好」惰性"),
+        ("天同","夫妻宫"):("亲密关系平和，少剧烈冲突","关系缺乏张力，容易平淡","主动创造新鲜感，关系维护需要刻意经营"),
+        ("廉贞","命宫"):  ("才华横溢，热情有创造力，执行力强","情绪波动大，易冲动决策","建立冷静期机制：重大决定睡一觉再执行"),
+        ("廉贞","官禄宫"):("适合需要激情和创意的职业","情绪化影响职业稳定性","用流程和规律对冲情绪波动"),
+        ("天府","命宫"):  ("稳健、守成能力强，逢凶化吉","过于保守，错失突破机会","每年主动做一件「不确定但有潜力」的事"),
+        ("天府","夫妻宫"):("亲密关系稳定，有安全感","太稳容易无聊，对方可能感到被限制","给关系留白，接受伴侣的独立空间"),
+        ("太阴","命宫"):  ("细腻敏感，直觉强，感受力丰富","情绪内耗重，自我批判多","建立情绪记录习惯，将内耗转化为创作或行动"),
+        ("太阴","财帛宫"):("女性财缘佳，靠积累和理财","财运波动受情绪影响","财务决策与情绪分离，固定时间做理财复盘"),
+        ("贪狼","命宫"):  ("魅力四射，全方位好奇心，欲望感旺盛","方向分散，什么都想要导致什么都不深","每年只深耕一个主方向，其余保持浅层探索"),
+        ("贪狼","官禄宫"):("适合需要人际魅力的行业，人脉广","事业线可能过多，难以聚焦","给事业划定「主赛道」，把社交能力导入一个核心方向"),
+        ("巨门","命宫"):  ("口才好，善于表达，分析能力强","话多招是非，容易在言语上树敌","说话前问自己「说了对谁有好处」，减少不必要的评论"),
+        ("天相","命宫"):  ("做事细心，有规矩感，亲和力好","主动性不足，依赖他人推动","主动承担发起者角色，锻炼独立启动能力"),
+        ("天梁","命宫"):  ("慈悲心重，有责任感，贵人缘好","太愿意扛事，容易过劳","学会说「不」，区分哪些责任是真正属于自己的"),
+        ("七杀","命宫"):  ("行动力超强，敢破局，意志坚","结构性孤独，冲突多，容易让自己四面树敌","主动建立支持系统，不必每次都单打独斗"),
+        ("七杀","官禄宫"):("适合需要开拓和决断的岗位，天然领导者","团队关系紧张，容易失去核心骨干","投资在人际关系维护上，管理者要留住人不只是推进事"),
+        ("破军","命宫"):  ("改革气质，敢于从零开始，创新力强","破坏旧有结构后，建立新秩序的耐心不足","每次「破」之前先规划「立」，不做无目的的颠覆"),
+        ("破军","财帛宫"):("有开创财富的能力，但财富波动大","冒进导致财务风险","给自己设资金安全底线，底线以上才可冒进"),
+        ("破军","官禄宫"):("适合创业、颠覆性行业，天然变革者","稳定性差，频繁跳槽或转型","在开创期确认自己想建立什么，而不只是打破什么"),
+    }
+
+    # 四化标注：检查该宫位是否有四化落入
+    def get_sihua_in_palace(pname):
+        tags = []
+        for tag, info in sihua_detail.items():
+            if info.get("所在宫位") == pname:
+                star = info.get("星曜", "")
+                color_map = {"化禄":"#c9973a","化权":"#c0392b","化科":"#2980b9","化忌":"#7f8c8d"}
+                color = color_map.get(tag, "#888")
+                tags.append((tag, star, color))
+        return tags
+
     def render_prc(pname):
         pr = palace_readings.get(pname, {})
         if not pr:
@@ -628,6 +684,58 @@ def render_ziwei_section(person: dict) -> str:
         stars_html += "".join(star_badge(s, small=True) for s in aux)
         icon = SIX_ICONS.get(pname, "◆")
         sub  = SIX_SUBS.get(pname, "")
+        question = PALACE_QUESTION.get(pname, "")
+
+        # 四化标注
+        sihua_in = get_sihua_in_palace(pname)
+        sihua_tags_html = ""
+        for tag, star, color in sihua_in:
+            sihua_tags_html += (
+                f'<span class="prc-sihua-tag" style="background:{color};color:#fff;'
+                f'font-size:.7rem;padding:1px 6px;border-radius:3px;margin-left:4px">'
+                f'{tag[1:]}↓{star}</span>'
+            )
+
+        # 动态组合分析
+        combo_blocks = []
+        for s in main:
+            key = (s, pname)
+            if key in STAR_IN_PALACE:
+                adv, risk, action = STAR_IN_PALACE[key]
+                combo_blocks.append(
+                    f'<div class="prc-combo">'
+                    f'<div class="prc-combo-star">{s}</div>'
+                    f'<div class="prc-combo-content">'
+                    f'<span class="prc-adv">✦ {adv}</span>'
+                    f'<span class="prc-risk">⚠ {risk}</span>'
+                    f'<span class="prc-action">→ {action}</span>'
+                    f'</div></div>'
+                )
+
+        # 如果有多颗主星，加组合说明
+        combo_note = ""
+        if len(main) >= 2:
+            pair_notes = {
+                frozenset(["太阳","破军"]): "太阳·破军同宫：创造力与执行力高度结合，开拓型能量强，但消耗极大，需要充足的恢复时间",
+                frozenset(["天同","天府"]): "天同·天府同宫：平稳享受型结构，极少冲突，但进取心偏弱，需主动设置外部压力源",
+                frozenset(["紫微","天府"]): "紫微·天府同宫：顶级稳健格局，守成积累能力极强，适合长线布局",
+                frozenset(["廉贞","巨门"]): "廉贞·巨门同宫：口才型才华，适合表达类职业，但情绪管理是核心课题",
+                frozenset(["太阳","贪狼"]): "太阳·贪狼同宫：能量外放+欲望驱动，魅力极强，方向感需刻意建立",
+                frozenset(["武曲","巨门"]): "武曲·巨门同宫：口才财气并重，适合谈判/销售/财务，言辞锋利需注意分寸",
+                frozenset(["紫微","贪狼"]): "紫微·贪狼同宫：格局大、欲望强，成就感极强，需警惕被欲望驱动而非价值驱动",
+                frozenset(["天机","太阴"]): "天机·太阴同宫：细腻智慧型，直觉准、分析强，易过度内耗",
+                frozenset(["天同","天梁"]): "天同·天梁同宫：慈悲平和，贵人缘极佳，但主动性弱，需推一把才动",
+            }
+            pair_key = frozenset(main[:2])
+            if pair_key in pair_notes:
+                combo_note = f'<div class="prc-pair-note">「{pair_notes[pair_key]}」</div>'
+
+        combo_html = "".join(combo_blocks)
+        # 如果没有精确匹配，fallback 到原 reading
+        if not combo_html and reading:
+            combo_html = f'<p class="prc-reading-fallback">{reading}</p>'
+
+        question_html = f'<div class="prc-question">{question}</div>' if question else ''
         return (
             f'<div class="palace-reading-card">'
             f'<div class="prc-header">'
@@ -636,10 +744,12 @@ def render_ziwei_section(person: dict) -> str:
             f'<span class="prc-name">{pname}</span>'
             f'<span class="prc-sub">{sub} · {zhi_c}宫</span>'
             f'</div>'
-            f'<div class="prc-stars">{stars_html}</div>'
+            f'<div class="prc-stars">{stars_html}{sihua_tags_html}</div>'
             f'</div>'
-            f'<p class="prc-reading">{reading}</p>'
-            f'</div>'
+            + question_html
+            + combo_note
+            + f'<div class="prc-combos">{combo_html}</div>'
+            + '</div>'
         )
 
     six_readings_html = "\n".join(render_prc(p) for p in SIX_PALACES)
@@ -1003,7 +1113,7 @@ def render_sketch_section(person: dict) -> str:
     inner = sk.get("inner_core", "")
     destiny = sk.get("destiny_direction", "")
     outer = sk.get("outer_expression", "")
-    reconciliation = sk.get("reconciliation_theme", "")
+    reconciliation = sk.get("reconciliation_theme", "") or sk.get("reconciliation", "")
     mbti_note = sk.get("mbti_integration", "")
 
     mbti_html = f'<div class="mbti-note"><span class="mbti-label">MBTI 补充</span><p>{mbti_note}</p></div>' if mbti_note else ""
@@ -1872,6 +1982,23 @@ details[open] .sd-detail-toggle::before { content: '▼ '; }
   .pillars-row { gap: 6px; }
   .pillar-ganzhi { font-size: 1rem; }
 }
+
+/* ── 六宫深度解读动态层 ── */
+.prc-question { font-size:.78rem; color:var(--color-ink-muted); font-style:italic;
+  margin:.3rem 0 .6rem; padding-left:.5rem; border-left:2px solid var(--color-border); }
+.prc-pair-note { font-size:.8rem; color:var(--color-ink-secondary); background:#f7f2ea;
+  border-radius:4px; padding:.4rem .7rem; margin:.4rem 0; font-style:italic; }
+.prc-combos { margin-top:.5rem; display:flex; flex-direction:column; gap:.5rem; }
+.prc-combo { display:grid; grid-template-columns:3.5rem 1fr; gap:.4rem; align-items:start; }
+.prc-combo-star { font-size:.78rem; font-weight:600; color:var(--color-gold);
+  background:#fdf5e6; padding:.3rem .4rem; border-radius:4px; text-align:center; margin-top:.1rem; }
+.prc-combo-content { display:flex; flex-direction:column; gap:.2rem; }
+.prc-adv   { font-size:.8rem; color:#3d6b54; line-height:1.6; }
+.prc-risk  { font-size:.8rem; color:#8b5e3c; line-height:1.6; }
+.prc-action{ font-size:.8rem; color:var(--color-ink-secondary); line-height:1.6;
+  font-style:italic; border-top:1px dashed var(--color-border); padding-top:.2rem; margin-top:.1rem; }
+.prc-reading-fallback { font-size:.82rem; color:var(--color-ink-secondary); line-height:1.75; margin:0; }
+.prc-sihua-tag { vertical-align:middle; }
 
 /* ── 关系指南 ── */
 .guide-friction { font-size:.85rem; color:var(--color-ink-secondary); background:var(--color-bg-card);
