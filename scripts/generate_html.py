@@ -659,6 +659,38 @@ def render_ziwei_section(person: dict) -> str:
         ("破军","命宫"):  ("改革气质，敢于从零开始，创新力强","破坏旧有结构后，建立新秩序的耐心不足","每次「破」之前先规划「立」，不做无目的的颠覆"),
         ("破军","财帛宫"):("有开创财富的能力，但财富波动大","冒进导致财务风险","给自己设资金安全底线，底线以上才可冒进"),
         ("破军","官禄宫"):("适合创业、颠覆性行业，天然变革者","稳定性差，频繁跳槽或转型","在开创期确认自己想建立什么，而不只是打破什么"),
+        # ── 夫妻宫补充 ──
+        ("太阳","夫妻宫"):  ("感情热情外放，伴侣往往有光彩","男性贵人缘化忌时感情是功课，容易消耗","把化忌当成「感情需要主动经营」的提示，而非不吉兆头"),
+        ("破军","夫妻宫"):  ("感情有开创力，伴侣往往带来新局面","感情路波折多，容易「破而不立」","每段关系结束前先弄清楚自己真正需要什么"),
+        ("天机","夫妻宫"):  ("感情聪明多变，善于理解伴侣","想法多、变化快，伴侣容易感到捉摸不定","建立感情里的「稳定仪式」，减少随意变化带来的不安全感"),
+        ("廉贞","夫妻宫"):  ("感情热烈有激情","情绪化影响亲密关系稳定性","高情绪时暂缓重大感情决定，冷静24小时再行动"),
+        ("武曲","夫妻宫"):  ("感情务实稳定，有担当","情感表达刚硬，伴侣容易感到被忽视","主动增加情感表达频率，不要让伴侣猜"),
+        ("天梁","夫妻宫"):  ("伴侣往往有长者特质或成熟稳重","感情偏不对等，容易成为被照顾或照顾的一方","寻找平等型伴侣，注意关系是否健康对等"),
+        ("太阴","夫妻宫"):  ("感情细腻温柔，重视内在连接","感情内耗重，容易把感情当成情绪垃圾桶","建立独立的情绪管理通道，不把所有压力带进亲密关系"),
+        ("贪狼","夫妻宫"):  ("感情魅力强，性吸引力旺","容易花心或被多人吸引，感情专一度需刻意维护","把贪狼的探索欲投入到关系深度上，而不是关系数量"),
+        ("巨门","夫妻宫"):  ("感情中口才好，善于表达","话多易引发口角，言语是感情最大的杀伤武器","练习「说之前想三秒」，感情里的话比工作里更有杀伤力"),
+        ("天相","夫妻宫"):  ("感情稳定，有规矩感和安全感","缺乏主动，依赖对方推动感情进展","主动发起约会和关键对话，不要等对方先动"),
+        # ── 迁移宫补充 ──
+        ("七杀","迁移宫"):  ("在外竞争力强，敢于闯荡陌生领域","外部环境摩擦多，容易遭遇对抗与孤立","把外部压力当磨刀石，同时主动建立在外的支持网络"),
+        ("天机","迁移宫"):  ("外部适应力强，善于在变化中找机会","在外容易多变，被人视为不稳定","在外部展示自己时，突出一个核心定位，减少「什么都能做」的印象"),
+        ("太阳","迁移宫"):  ("在外形象光鲜，易受注目，贵人多","消耗大，在外用力过猛","给自己设定「外部能量消耗上限」，保留内部恢复时间"),
+        ("廉贞","迁移宫"):  ("在外才华横溢，创意表现力强","情绪在外部场合容易失控","建立公开场合的情绪缓冲机制，不让即时情绪影响外部形象"),
+        ("武曲","迁移宫"):  ("在外果决有担当，财气好","在外太刚，容易给人强硬难接近的印象","在外部场合主动展示柔软一面，比刚硬更能赢得合作"),
+        ("贪狼","迁移宫"):  ("在外魅力十足，社交圈广","在外精力分散，难以聚焦","出门前设定本次外部互动的核心目标，避免被新鲜感带跑"),
+        # ── 财帛宫补充 ──
+        ("天机","财帛宫"):  ("财运灵活多变，善于找到财富机会","财来财去，稳定积累能力弱","给自己设「财富不动仓」：每笔收入固定比例锁死不动"),
+        ("廉贞","财帛宫"):  ("财运有爆发力，敢于投入","情绪化影响财务决策","大额财务决策强制等待72小时再执行"),
+        ("天同","财帛宫"):  ("财运平和，不太缺钱但也不会大富","进取心弱，容易满足于够用","定期审视财务目标是否已经过时"),
+        ("天梁","财帛宫"):  ("贵人财缘好，有偏财运","守财能力弱，容易把钱送人","建立清晰的财务边界，区分「我愿意给」和「被要求给」"),
+        ("太阴","财帛宫"):  ("女性财缘佳，靠积累和理财","财运波动受情绪影响","财务决策时问自己：我是在满足情绪需求还是理性需求"),
+        ("天相","财帛宫"):  ("财运稳健，有守财天赋","过于保守，错失增值机会","给财务配置10-20%的「成长型仓位」"),
+        ("天府","财帛宫"):  ("守财聚财能力极强，资产稳健","财运过于保守，难以突破","接受适度风险是财富成长的必要成本"),
+        ("七杀","财帛宫"):  ("财运有爆发力，适合独立创业积累","财富波动大，赚多散多","在高收入期主动建立固定资产仓位"),
+        ("天梁","官禄宫"):  ("适合学术、政策、顾问类职业，贵人缘极佳","事业依赖贵人，独立创业难","主动经营贵人关系，但同时培养独立决策能力"),
+        ("天相","官禄宫"):  ("工作细心负责，做事有规矩，受上司信任","主动性不足，等待被安排","培养主动提案的习惯，不只是执行者也要成为发起者"),
+        ("太阴","官禄宫"):  ("适合后台支撑、创意类、女性向行业","在强竞争环境里容易压力过大","找到能发挥细腻特质的工作环境，不必强迫自己成为猛将"),
+        ("天同","官禄宫"):  ("工作环境平和，不爱竞争","事业进取心弱，容易原地踏步","定期强制给自己设定跳出舒适区的工作目标"),
+        ("贪狼","财帛宫"):  ("财运活跃，多元化收入机会多","花钱和赚钱一样猛，净积累慢","设立「欲望账户」：把冲动消费锁进专门账户限额管理"),
     }
 
     # 四化标注：检查该宫位是否有四化落入
@@ -959,12 +991,17 @@ def render_name_section(person: dict) -> str:
     </section>"""
 
 
-def render_sixdim_section(person: dict) -> str:
-    """六维度评分 + 权重滑块 + JS 实时重算引擎"""
+def render_sixdim_section(person: dict, pid: str = "") -> str:
+    """六维度评分 + 权重滑块 + JS 实时重算引擎
+    pid: person id prefix，合盘多人时传入如 'p1_' / 'p2_' 避免 ID 冲突
+    """
     import json as _json
     dims = person.get("six_dimensions")
     if not dims:
         return ""
+
+    # pid 前缀：所有 DOM id 和 JS 函数名均含此前缀，防止合盘多人时 ID 冲突
+    p = pid  # 如 "p1_" 或 ""
 
     DIM_META = [
         ("career",   "事业", "📐"),
@@ -978,13 +1015,14 @@ def render_sixdim_section(person: dict) -> str:
     MODULE_CN    = {"bazi":"八字", "ziwei":"紫微", "bone":"称骨",
                     "western":"星座", "name":"姓名", "mbti":"MBTI"}
 
-    # 把完整数据序列化进 HTML 供 JS 消费
+    # 把完整数据序列化进 HTML 供 JS 消费（键名带 pid 前缀）
     js_data = {}
     for key, cn, _ in DIM_META:
         d    = dims.get(key, {})
         sigs = d.get("signals", {})
         wts  = d.get("weights", {})
-        js_data[key] = {
+        pkey = f"{p}{key}"
+        js_data[pkey] = {
             "cn":      cn,
             "label":   d.get("label", ""),
             "comment": d.get("comment", ""),
@@ -994,6 +1032,10 @@ def render_sixdim_section(person: dict) -> str:
         }
     js_data_str = _json.dumps(js_data, ensure_ascii=False)
 
+    # JS 函数名加前缀，避免合盘多人时互相覆盖
+    fn_recalc = f"sdRecalc_{p.rstrip('_')}" if p else "sdRecalc"
+    fn_reset  = f"sdReset_{p.rstrip('_')}"  if p else "sdReset"
+
     # 静态卡片骨架（JS 初始化后填充数值）
     cards_html = ""
     for key, cn, icon in DIM_META:
@@ -1001,6 +1043,7 @@ def render_sixdim_section(person: dict) -> str:
         comment = d.get("comment", "")
         sigs    = d.get("signals", {})
         wts     = d.get("weights", {})
+        pkey    = f"{p}{key}"
         sig_rows = ""
         for m in MODULE_ORDER:
             if m not in sigs:
@@ -1015,39 +1058,39 @@ def render_sixdim_section(person: dict) -> str:
                 f'<span class="sd-sig-score">{sig_score}</span>'
                 f'<div class="sd-slider-wrap">'
                 f'<input type="range" class="sd-weight-slider"'
-                f' data-dim="{key}" data-mod="{m}"'
+                f' data-dim="{pkey}" data-mod="{m}"'
                 f' min="0" max="50" step="1" value="{default_w}"'
-                f' oninput="sdRecalc(\'{key}\')" />'
-                f'<span class="sd-weight-val" id="sdw-{key}-{m}">{default_w}</span>'
+                f' oninput="{fn_recalc}(\'{pkey}\')" />'
+                f'<span class="sd-weight-val" id="sdw-{pkey}-{m}">{default_w}</span>'
                 f'</div></div>'
                 f'<div class="sd-basis">{sig_basis}</div>'
                 f'</div>'
             )
         cards_html += (
-            f'<div class="sixdim-card" id="sdcard-{key}">'
+            f'<div class="sixdim-card" id="sdcard-{pkey}">'
             f'<div class="sd-card-header">'
             f'<span class="sd-icon">{icon}</span>'
             f'<span class="sd-cn">{cn}</span>'
             f'<div class="sd-score-pill">'
-            f'<span class="sd-score-num" id="sdscore-{key}">—</span>'
+            f'<span class="sd-score-num" id="sdscore-{pkey}">—</span>'
             f'<span class="sd-score-max">/100</span>'
             f'</div></div>'
-            f'<div class="sd-bar-wrap"><div class="sd-bar" id="sdbar-{key}"></div></div>'
-            f'<div class="sd-label" id="sdlabel-{key}"></div>'
+            f'<div class="sd-bar-wrap"><div class="sd-bar" id="sdbar-{pkey}"></div></div>'
+            f'<div class="sd-label" id="sdlabel-{pkey}"></div>'
             f'<div class="sd-comment">{comment}</div>'
             f'<details class="sd-detail">'
             f'<summary class="sd-detail-toggle">权重调整 · 信号来源</summary>'
             f'<div class="sd-sig-list">'
             f'<div class="sd-sig-header"><span>模块</span><span>信号分</span><span>权重（拖动调整）</span></div>'
             f'{sig_rows}'
-            f'<button class="sd-reset-btn" onclick="sdReset(\'{key}\')">恢复默认权重</button>'
+            f'<button class="sd-reset-btn" onclick="{fn_reset}(\'{pkey}\')">恢复默认权重</button>'
             f'</div></details>'
             f'</div>'
         )
 
     js_engine = (
-        "<script>\n(function(){\n"
-        "  var SD_DATA = " + js_data_str + ";\n"
+        f"<script>\n(function(){{\n"
+        f"  var SD_DATA = {js_data_str};\n"
         "\n"
         "  function scoreToColor(pct) {\n"
         "    if (pct >= 0.8) return '#c9973a';\n"
@@ -1056,9 +1099,10 @@ def render_sixdim_section(person: dict) -> str:
         "    return '#b5451b';\n"
         "  }\n"
         "\n"
-        "  window.sdRecalc = function(dimKey) {\n"
+        f"  window.{fn_recalc} = function(dimKey) {{\n"
         "    var d = SD_DATA[dimKey];\n"
-        "    var sliders = document.querySelectorAll('.sd-weight-slider[data-dim=\"' + dimKey + '\"]');\n"
+        "    if (!d) return;\n"
+        "    var sliders = document.querySelectorAll('.sd-weight-slider[data-dim="' + dimKey + '"]');\n"
         "    var wsum = 0, score = 0;\n"
         "    sliders.forEach(function(sl) {\n"
         "      var mod = sl.dataset.mod;\n"
@@ -1082,18 +1126,19 @@ def render_sixdim_section(person: dict) -> str:
         "    if (cardEl)  cardEl.style.setProperty('--dim-color', color);\n"
         "  };\n"
         "\n"
-        "  window.sdReset = function(dimKey) {\n"
+        f"  window.{fn_reset} = function(dimKey) {{\n"
         "    var d = SD_DATA[dimKey];\n"
-        "    var sliders = document.querySelectorAll('.sd-weight-slider[data-dim=\"' + dimKey + '\"]');\n"
+        "    if (!d) return;\n"
+        "    var sliders = document.querySelectorAll('.sd-weight-slider[data-dim="' + dimKey + '"]');\n"
         "    sliders.forEach(function(sl) {\n"
         "      var mod = sl.dataset.mod;\n"
         "      if (d.weights[mod] !== undefined) sl.value = d.weights[mod];\n"
         "    });\n"
-        "    sdRecalc(dimKey);\n"
+        f"    {fn_recalc}(dimKey);\n"
         "  };\n"
         "\n"
         "  var dims = Object.keys(SD_DATA);\n"
-        "  dims.forEach(function(dk) { sdRecalc(dk); });\n"
+        f"  dims.forEach(function(dk) {{ {fn_recalc}(dk); }});\n"
         "})();\n"
         "</script>"
     )
@@ -1156,8 +1201,10 @@ def render_confidence_section(person: dict) -> str:
     )
 
 
-def render_person_full(person: dict) -> str:
-    """渲染单人完整命盘所有 section"""
+def render_person_full(person: dict, pid: str = "") -> str:
+    """渲染单人完整命盘所有 section
+    pid: 传给 render_sixdim_section 用于 ID 前缀隔离（合盘多人时必须传入）
+    """
     return "".join([
         render_hero(person),
         render_bazi_section(person),
@@ -1165,7 +1212,7 @@ def render_person_full(person: dict) -> str:
         render_ziwei_section(person),
         render_western_section(person),
         render_name_section(person),
-        render_sixdim_section(person),
+        render_sixdim_section(person, pid=pid),
         render_sketch_section(person),
         render_confidence_section(person),
     ])
@@ -1412,12 +1459,13 @@ def build_synastry_page(ctx: dict) -> str:
 
     # 底部折叠完整命盘
     full_html = ""
-    for p in persons:
-        pname = p.get("name", f"命主{p.get('person_index','')}")
+    for p_idx, p in enumerate(persons, start=1):
+        pname = p.get("name", f"命主{p.get('person_index', p_idx)}")
+        person_pid = f"p{p_idx}_"
         full_html += f"""
-        <details class="full-person-details" id="full-person-{p.get('person_index',1)}">
+        <details class="full-person-details" id="full-person-{p.get('person_index', p_idx)}">
           <summary class="full-person-summary">▶ {pname} 完整命盘</summary>
-          <div class="full-person-inner">{render_person_full(p)}</div>
+          <div class="full-person-inner">{render_person_full(p, pid=person_pid)}</div>
         </details>"""
 
     full_section = f"""
