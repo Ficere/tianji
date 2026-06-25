@@ -1438,25 +1438,6 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
         for m in TYPE_META.values()
     )
 
-    # ── ② 力导向图数据 ────────────────────────────────────────────────────────
-    nodes_json = _json.dumps([{"id": nm, "idx": i} for i, nm in enumerate(names)], ensure_ascii=False)
-    links_data = []
-    for p in pairs_raw:
-        a, b, total = p.get("a", ""), p.get("b", ""), p.get("total", 3)
-        ptype = p.get("type", "neutral")
-        meta = TYPE_META.get(ptype, TYPE_META["neutral"])
-        sx = p.get("sx_rel", "")
-        rz = p.get("rz_rel", "")
-        rel_parts = [x for x in [sx, rz] if x and x != "平和"]
-        rel_label = "·".join(rel_parts) if rel_parts else (sx or "平和")
-        links_data.append({
-            "source": a, "target": b,
-            "total": total, "type": ptype,
-            "color": meta["color"],
-            "label": rel_label,
-            "note": p.get("note", "")
-        })
-    links_json = _json.dumps(links_data, ensure_ascii=False)
 
     uid = f"rm{abs(hash(str(names))) % 100000}"
 
@@ -1475,10 +1456,6 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
 
       <div class="matrix-tooltip" id="mtooltip-{uid}"></div>
 
-      <div class="matrix-network-wrap">
-        <div class="matrix-network-title">关系网络图 <span class="matrix-network-hint">（节点可拖动）</span></div>
-        <svg id="network-{uid}" class="matrix-network-svg" width="100%" height="460"></svg>
-      </div>
 
     </section>
 
@@ -1499,10 +1476,6 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
     .matrix-cell-data{{padding:6px 4px}}
     .matrix-dot{{display:block;font-size:1em;line-height:1.2}}
     .matrix-score{{display:block;font-size:.7rem;font-weight:700}}
-    .matrix-network-wrap{{background:#0f0c08;border-radius:4px;padding:14px;margin-top:4px}}
-    .matrix-network-title{{color:#e8c47a;font-size:.82rem;margin-bottom:8px;letter-spacing:.1em}}
-    .matrix-network-hint{{color:#6b5a47;font-size:.72rem}}
-    .matrix-network-svg{{display:block}}
     .matrix-tooltip{{position:fixed;background:#1a1410;color:#e8c47a;padding:8px 12px;border-radius:4px;font-size:.78rem;line-height:1.7;pointer-events:none;opacity:0;transition:opacity .15s;max-width:220px;z-index:9999;border:1px solid #4a3a20;white-space:pre-line}}
     </style>
 
@@ -1524,129 +1497,6 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
           tip.style.opacity = '0';
         }});
       }});
-
-      var NODES = {nodes_json};
-      var LINKS = {links_json};
-
-      function drawNetwork(){{
-        var container = document.getElementById('network-{uid}');
-        if (!container) return;
-        var W = container.clientWidth || 640;
-        var H = 460;
-        container.setAttribute('height', H);
-
-        var NCOLS = ['#c9973a','#a07840','#8b6040','#6b4830','#4a3020','#3a2810','#5a4030'];
-
-        var svg = d3.select('#network-{uid}');
-        svg.selectAll('*').remove();
-
-        var sim = d3.forceSimulation(NODES)
-          .force('link', d3.forceLink(LINKS).id(function(d){{ return d.id; }})
-            .distance(function(l){{
-              if (l.total >= 8) return 80;
-              if (l.total >= 5) return 110;
-              if (l.total >= 0) return 150;
-              return 200;
-            }})
-            .strength(function(l){{ return l.total >= 0 ? 0.4 : 0.12; }}))
-          .force('charge', d3.forceManyBody().strength(-300))
-          .force('center', d3.forceCenter(W / 2, H / 2))
-          .force('collision', d3.forceCollide(46));
-
-        var link = svg.append('g')
-          .selectAll('line').data(LINKS).enter().append('line')
-          .attr('stroke', function(d){{ return d.color; }})
-          .attr('stroke-width', function(d){{
-            var t = Math.abs(d.total);
-            return t >= 8 ? 3.5 : t >= 5 ? 2.5 : t >= 2 ? 1.5 : 1;
-          }})
-          .attr('stroke-opacity', function(d){{
-            var t = Math.abs(d.total);
-            return t >= 5 ? 0.9 : t >= 2 ? 0.6 : 0.3;
-          }})
-          .attr('stroke-dasharray', function(d){{ return d.total < 0 ? '6,4' : null; }});
-
-        var linkLabel = svg.append('g')
-          .selectAll('text')
-          .data(LINKS.filter(function(d){{ return Math.abs(d.total) >= 4; }}))
-          .enter().append('text')
-          .attr('font-size', 10)
-          .attr('fill', function(d){{ return d.color; }})
-          .attr('text-anchor', 'middle')
-          .attr('dy', -4)
-          .attr('font-family', 'Noto Serif SC, serif')
-          .text(function(d){{
-            return d.label + ' ' + (d.total >= 0 ? '+' : '') + d.total;
-          }});
-
-        var node = svg.append('g')
-          .selectAll('g').data(NODES).enter().append('g')
-          .call(d3.drag()
-            .on('start', function(event, d){{
-              if (!event.active) sim.alphaTarget(.3).restart();
-              d.fx = d.x; d.fy = d.y;
-            }})
-            .on('drag', function(event, d){{ d.fx = event.x; d.fy = event.y; }})
-            .on('end', function(event, d){{
-              if (!event.active) sim.alphaTarget(0);
-              d.fx = null; d.fy = null;
-            }}));
-
-        node.append('circle')
-          .attr('r', 32)
-          .attr('fill', '#14100a')
-          .attr('stroke', function(d){{ return NCOLS[d.idx % NCOLS.length]; }})
-          .attr('stroke-width', 2.5);
-
-        node.append('text')
-          .attr('text-anchor', 'middle').attr('dy', '.35em')
-          .attr('font-size', 12).attr('fill', '#e8c47a')
-          .attr('font-family', 'Noto Serif SC, serif')
-          .text(function(d){{ return d.id; }});
-
-        node.append('title').text(function(d){{
-          var lines = [d.id];
-          LINKS.forEach(function(l){{
-            var src = typeof l.source === 'object' ? l.source.id : l.source;
-            var tgt = typeof l.target === 'object' ? l.target.id : l.target;
-            var other = src === d.id ? tgt : (tgt === d.id ? src : null);
-            if (other) lines.push('× ' + other + '  ' + l.label + ' ' + (l.total >= 0 ? '+' : '') + l.total);
-          }});
-          return lines.join('\\n');
-        }});
-
-        sim.on('tick', function(){{
-          var pad = 40;
-          link
-            .attr('x1', function(d){{ return Math.max(pad, Math.min(W-pad, d.source.x)); }})
-            .attr('y1', function(d){{ return Math.max(pad, Math.min(H-pad, d.source.y)); }})
-            .attr('x2', function(d){{ return Math.max(pad, Math.min(W-pad, d.target.x)); }})
-            .attr('y2', function(d){{ return Math.max(pad, Math.min(H-pad, d.target.y)); }});
-          linkLabel
-            .attr('x', function(d){{
-              var sx = typeof d.source==='object' ? d.source.x : 0;
-              var tx = typeof d.target==='object' ? d.target.x : 0;
-              return (sx + tx) / 2;
-            }})
-            .attr('y', function(d){{
-              var sy = typeof d.source==='object' ? d.source.y : 0;
-              var ty = typeof d.target==='object' ? d.target.y : 0;
-              return (sy + ty) / 2;
-            }});
-          node.attr('transform', function(d){{
-            return 'translate(' + Math.max(pad,Math.min(W-pad,d.x)) + ',' + Math.max(pad,Math.min(H-pad,d.y)) + ')';
-          }});
-        }});
-      }}
-
-      if (typeof d3 === 'undefined') {{
-        var s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js';
-        s.onload = drawNetwork;
-        document.head.appendChild(s);
-      }} else {{
-        drawNetwork();
-      }}
     }})();
     </script>"""
 
