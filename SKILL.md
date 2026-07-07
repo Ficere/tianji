@@ -817,7 +817,7 @@ combo = _zodiac_combo_reading(sun_sign, moon_sign, rising_sign)
 
 **total 计分口径：** 生肖关系分（六合+7/三合+5/六冲-5/相害-3/相刑-2/平和+2）＋日主天干关系分（天干合+7/比和+4/相生+3/相克+1）
 
-**渲染函数：** `render_relation_matrix(persons, synastry)` — 自动输出①上三角热力矩阵表（快速总览）+②D3力导向关系网络图（节点可拖动）。
+**渲染函数：** `render_relation_matrix(persons, synastry)` — 输出全对称热力矩阵表，所有两两关系均填充（上下三角对称），对角线显示成员自身标识。
 
 **兼容说明：** 若 `relation_matrix` 字段不存在，渲染器自动从 `shengxiao_matrix.good/tension` 推导基础版（仅生肖维度）。推荐在构建 reading.json 时完整计算并填入 `relation_matrix`。
 

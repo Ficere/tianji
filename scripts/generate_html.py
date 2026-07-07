@@ -1314,7 +1314,7 @@ import json as _json
 def render_relation_matrix(persons: list, synastry: dict) -> str:
     """
     渲染关系矩阵图（适用于双人/多人合盘）。
-    双视图：① 上三角热力矩阵表（快速总览）② 力导向关系网络图（D3.js）
+    全对称热力矩阵表：所有两两关系，上下三角对称填充，对角线为自身标识
     数据来源：synastry.relation_matrix 列表，每项含 a, b, total, sx_rel, rz_rel, type, note。
     若 relation_matrix 不存在则自动从 shengxiao_matrix 推导基础版。
     """
