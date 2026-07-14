@@ -796,72 +796,241 @@ def get_moon_sign(year, month, day, hour=12, minute=0):
 
 
 # ============================================================
-# 上升星座 —— 基于出生地恒星时 + 黄道交角
+# 全球城市坐标库 + 真太阳时校正 + 上升星座
 # ============================================================
 
-# 主要城市经纬度（纬度N正，经度E正）
-CITY_COORDS = {
-    "北京": (39.9042, 116.4074),
-    "上海": (31.2304, 121.4737),
-    "广州": (23.1291, 113.2644),
-    "深圳": (22.5431, 114.0579),
-    "成都": (30.5728, 104.0668),
-    "重庆": (29.5630, 106.5516),
-    "杭州": (30.2741, 120.1551),
-    "南京": (32.0603, 118.7969),
-    "武汉": (30.5928, 114.3055),
-    "西安": (34.3416, 108.9398),
-    "天津": (39.3434, 117.3616),
-    "长沙": (28.2282, 112.9388),
-    "郑州": (34.7466, 113.6254),
-    "沈阳": (41.8057, 123.4315),
-    "哈尔滨": (45.8038, 126.5349),
-    "长春": (43.8171, 125.3235),
-    "济南": (36.6512, 117.1201),
-    "合肥": (31.8206, 117.2272),
-    "昆明": (25.0389, 102.7183),
-    "南宁": (22.8170, 108.3665),
-    "贵阳": (26.6470, 106.6302),
-    "福州": (26.0745, 119.2965),
-    "厦门": (24.4798, 118.0894),
-    "南昌": (28.6820, 115.8579),
-    "太原": (37.8706, 112.5489),
-    "石家庄": (38.0428, 114.5149),
-    "呼和浩特": (40.8426, 111.7496),
-    "乌鲁木齐": (43.8256, 87.6168),
-    "拉萨": (29.6625, 91.1322),
-    "西宁": (36.6232, 101.7804),
-    "银川": (38.4872, 106.2309),
-    "兰州": (36.0611, 103.8343),
-    "海口": (20.0440, 110.1999),
-    "三亚": (18.2524, 109.5117),
-    "香港": (22.3193, 114.1694),
-    "台北": (25.0330, 121.5654),
-    "澳门": (22.1987, 113.5439),
-    # 国际主要城市
-    "东京": (35.6762, 139.6503),
-    "首尔": (37.5665, 126.9780),
-    "新加坡": (1.3521, 103.8198),
-    "纽约": (40.7128, -74.0060),
-    "洛杉矶": (34.0522, -118.2437),
-    "伦敦": (51.5074, -0.1278),
-    "巴黎": (48.8566, 2.3522),
-    "悉尼": (-33.8688, 151.2093),
-}
+import os as _os
+
+_CITY_COORDS_PATH = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "references", "city_coords.json")
 
 
-def calc_ascendant(year, month, day, hour, minute, lat, lon_deg):
+def _load_city_coords():
+    """加载全球城市坐标库（references/city_coords.json）。
+    覆盖中国全部地级市/自治州 + 全球350+主要城市，中文名为主键。
+    若文件缺失，回退到内置的精简城市表，保证脚本可用。
+    """
+    try:
+        with open(_CITY_COORDS_PATH, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        return {k: tuple(v) for k, v in raw.items() if not k.startswith("_")}
+    except Exception:
+        return {
+            "北京": (39.9042, 116.4074), "上海": (31.2304, 121.4737),
+            "广州": (23.1291, 113.2644), "深圳": (22.5431, 114.0579),
+            "成都": (30.5728, 104.0668), "重庆": (29.5630, 106.5516),
+            "杭州": (30.2741, 120.1551), "南京": (32.0603, 118.7969),
+            "武汉": (30.5928, 114.3055), "西安": (34.3416, 108.9398),
+            "纽约": (40.7128, -74.0060), "伦敦": (51.5074, -0.1278),
+            "东京": (35.6762, 139.6503), "巴黎": (48.8566, 2.3522),
+            "悉尼": (-33.8688, 151.2093),
+        }
+
+
+CITY_COORDS = _load_city_coords()
+
+# timezonefinder：离线经纬度→IANA时区名查询（可选依赖，缺失时回退固定时区估算）
+try:
+    from timezonefinder import TimezoneFinder as _TimezoneFinder
+    _TF_INSTANCE = _TimezoneFinder()
+except ImportError:
+    _TF_INSTANCE = None
+
+# pytz：离线时区→UTC偏移查询，正确处理历史时区变更和夏令时（可选依赖）
+try:
+    import pytz as _pytz
+except ImportError:
+    _pytz = None
+
+
+def parse_city_or_coords(city_input):
+    """
+    解析出生地输入，支持三种形式：
+    1. 内置城市库中的中文/别名城市名，如 "普洱"、"纽约"
+    2. 直接经纬度字符串 "纬度,经度"，如 "22.78,100.98"
+    3. (lat, lon) 元组/列表
+
+    返回: (lat, lon, resolved_name) 或 (None, None, None) 如果无法解析
+    """
+    if city_input is None:
+        return None, None, None
+    if isinstance(city_input, (tuple, list)) and len(city_input) == 2:
+        try:
+            return float(city_input[0]), float(city_input[1]), f"{city_input[0]},{city_input[1]}"
+        except (TypeError, ValueError):
+            return None, None, None
+    if isinstance(city_input, str):
+        city_input = city_input.strip()
+        if not city_input:
+            return None, None, None
+        # 直接经纬度字符串："22.78,100.98" 或 "22.78, 100.98"
+        if "," in city_input:
+            parts = [p.strip() for p in city_input.split(",")]
+            if len(parts) == 2:
+                try:
+                    lat = float(parts[0])
+                    lon = float(parts[1])
+                    return lat, lon, f"{lat},{lon}"
+                except ValueError:
+                    pass
+        # 城市名精确匹配
+        if city_input in CITY_COORDS:
+            lat, lon = CITY_COORDS[city_input]
+            return lat, lon, city_input
+        # 城市名模糊匹配（去掉"市/州/自治州/特别行政区"等后缀）
+        stripped = city_input
+        for suffix in ("特别行政区", "自治州", "地区", "市", "州", "县", "区"):
+            if stripped.endswith(suffix) and len(stripped) > len(suffix):
+                candidate = stripped[: -len(suffix)]
+                if candidate in CITY_COORDS:
+                    lat, lon = CITY_COORDS[candidate]
+                    return lat, lon, candidate
+        # 包含匹配（如用户输入"美国纽约"匹配到"纽约"）
+        for name, coords in CITY_COORDS.items():
+            if name in city_input or city_input in name:
+                return coords[0], coords[1], name
+        return None, None, None
+    return None, None, None
+
+
+# 中国大陆/港澳台全境法定报时统一使用北京时间（UTC+8），
+# 即使地理经度落在乌鲁木齐等实际时区（如 Asia/Urumqi=UTC+6）范围内，
+# 出生证明/户口登记上的钟表时刻仍是北京时间。
+# 经纬度范围框（宽松包含中国全境+港澳台，用于判断是否应强制UTC+8）：
+_CHINA_BBOX = (17.0, 55.0, 72.0, 135.5)  # (lat_min, lat_max, lon_min, lon_max)
+
+
+def _is_china_region(lat, lon):
+    lat_min, lat_max, lon_min, lon_max = _CHINA_BBOX
+    return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
+
+
+def get_timezone_offset_hours(lat, lon, year=2000, month=1, day=1):
+    """
+    根据经纬度+日期，离线查询当地标准时区相对UTC的偏移小时数。
+    使用 timezonefinder 定位 IANA 时区名，再用 pytz 结合具体日期计算偏移
+    （自动处理历史时区变更/夏令时；出生地在推荐使用出生当天日期计算）。
+    若两个库都不可用，回退到经度粗略估算（每15°=1小时，不校正夏令时/历史时区）。
+
+    特殊规则：中国大陆/港澳台全境（包括新疆、西藏等地理时区非UTC+8的地区）
+    法定报时统一使用北京时间 UTC+8——用户提供的出生时刻钟表数字就是按北京时间记录的，
+    因此该区域强制返回 UTC+8，不采用 timezonefinder 给出的地理时区（如 Asia/Urumqi）。
+
+    返回: (偏移小时数, 时区名或None, 是否为估算值)
+    """
+    if _is_china_region(lat, lon):
+        return 8.0, "Asia/Shanghai（中国法定统一时区）", False
+
+    if _TF_INSTANCE is not None and _pytz is not None:
+        try:
+            tz_name = _TF_INSTANCE.timezone_at(lat=lat, lng=lon)
+            if tz_name:
+                tz = _pytz.timezone(tz_name)
+                naive_dt = datetime.datetime(year, month, day, 12, 0)
+                localized = tz.localize(naive_dt)
+                offset_hours = localized.utcoffset().total_seconds() / 3600.0
+                return offset_hours, tz_name, False
+        except Exception:
+            pass
+    # 回退：经度粗略估算标准时区（不含夏令时/历史校正）
+    offset_hours = round(lon / 15.0)
+    return offset_hours, None, True
+
+
+def calc_true_solar_time(year, month, day, hour, minute, lat, lon_deg,
+                          input_is_beijing_time=True, tz_offset_hours=None):
+    """
+    计算真太阳时（Apparent Solar Time）校正。
+
+    真太阳时 = 标准时间 + 经度时差（出生地经度与所在时区中央经线之差）+ 均时差（地球轨道偏心率与地轴倾角导致的修正）
+
+    参数：
+      input_is_beijing_time: True 表示输入的 hour/minute 是北京时间（旧接口兼容，默认行为不变）；
+                              False 且提供 tz_offset_hours 时，表示输入已是出生地当地标准时间。
+      tz_offset_hours: 出生地标准时区相对UTC的偏移（小时）。若为None，自动通过经纬度查询。
+
+    返回字典：
+      {
+        "true_solar_hour": 真太阳时的小时(浮点),
+        "true_solar_time_str": "HH:MM" 格式,
+        "longitude_correction_min": 经度时差校正(分钟),
+        "equation_of_time_min": 均时差校正(分钟),
+        "total_correction_min": 总校正(分钟),
+        "tz_offset_hours": 使用的标准时区偏移,
+        "tz_name": 时区名(若可查得),
+        "tz_is_estimated": 时区偏移是否为粗略估算,
+      }
+    """
+    if tz_offset_hours is None:
+        tz_offset_hours, tz_name, tz_estimated = get_timezone_offset_hours(lat, lon_deg, year, month, day)
+    else:
+        tz_name, tz_estimated = None, False
+
+    # 标准时区中央经线
+    central_meridian = tz_offset_hours * 15.0
+
+    # 经度时差：出生地经度相对时区中央经线每偏移1度，时间偏移4分钟（东多西少）
+    longitude_correction_min = (lon_deg - central_meridian) * 4.0
+
+    # 均时差方程（Equation of Time，Meeus近似公式，单位：分钟）
+    hour_float = hour + minute / 60.0
+    if input_is_beijing_time:
+        # 输入是北京时间，先换算到UT，再换算到当地标准时间，用于日序计算（对EoT影响极小，用当天日期即可）
+        pass
+    jd = gregorian_to_jd(year, month, day, 12, 0)  # 用正午即可，EoT全天变化很小
+    n = jd - 2451545.0
+    L = (280.460 + 0.9856474 * n) % 360
+    g = math.radians((357.528 + 0.9856003 * n) % 360)
+    lambda_sun = math.radians((L + 1.915 * math.sin(g) + 0.020 * math.sin(2 * g)) % 360)
+    eps = math.radians(23.439 - 0.0000004 * n)
+    y = math.tan(eps / 2) ** 2
+    L_r = math.radians(L)
+    eot_rad = (y * math.sin(2 * L_r)
+               - 2 * 0.0167 * math.sin(g)
+               + 4 * 0.0167 * y * math.sin(g) * math.cos(2 * L_r)
+               - 0.5 * y * y * math.sin(4 * L_r)
+               - 1.25 * 0.0167 * 0.0167 * math.sin(2 * g))
+    equation_of_time_min = math.degrees(eot_rad) * 4.0  # 转换为分钟
+
+    total_correction_min = longitude_correction_min + equation_of_time_min
+    true_solar_hour = hour_float + total_correction_min / 60.0
+
+    # 换算为 HH:MM（可能跨日，仅用于展示，不做跨日翻转以免误导）
+    ts_h = int(true_solar_hour) % 24
+    ts_m = int(round((true_solar_hour - math.floor(true_solar_hour)) * 60))
+    if ts_m == 60:
+        ts_m = 0
+        ts_h = (ts_h + 1) % 24
+
+    return {
+        "true_solar_hour": round(true_solar_hour, 4),
+        "true_solar_time_str": f"{ts_h:02d}:{ts_m:02d}",
+        "longitude_correction_min": round(longitude_correction_min, 2),
+        "equation_of_time_min": round(equation_of_time_min, 2),
+        "total_correction_min": round(total_correction_min, 2),
+        "tz_offset_hours": tz_offset_hours,
+        "tz_name": tz_name,
+        "tz_is_estimated": tz_estimated,
+    }
+
+
+def calc_ascendant(year, month, day, hour, minute, lat, lon_deg, tz_offset_hours=None):
     """
     计算上升星座（Ascendant）。
     基于出生地本地恒星时（Local Sidereal Time）与黄道交点。
     使用整宫制（Whole Sign Houses）。
-    
+
     lat: 出生地纬度（北纬为正）
     lon_deg: 出生地东经（东经为正）
+    hour/minute: 出生地当地标准时间（钟表时间，非真太阳时）
+    tz_offset_hours: 出生地标准时区相对UTC的偏移小时数。若为None，自动通过经纬度离线查询
+                     （若查询失败则回退为北京时间UTC+8假设，保持向后兼容）。
     返回: (上升星座名, 上升黄经度数, 是否边界附近)
     """
+    if tz_offset_hours is None:
+        tz_offset_hours, _tz_name, _est = get_timezone_offset_hours(lat, lon_deg, year, month, day)
+
     jd = gregorian_to_jd(year, month, day, hour, minute)
-    jd_ut = jd - 8.0 / 24.0  # 北京时间→UT
+    jd_ut = jd - tz_offset_hours / 24.0  # 出生地标准时间→UT
 
     # 格林尼治恒星时（度）
     T = (jd_ut - 2451545.0) / 36525.0
@@ -892,12 +1061,46 @@ def calc_ascendant(year, month, day, hour, minute, lat, lon_deg):
 
 
 def get_ascendant_by_city(year, month, day, hour, minute, city):
-    """通过城市名查经纬度，计算上升星座。返回 None 如果城市不在库中。"""
-    coords = CITY_COORDS.get(city)
-    if not coords:
+    """
+    通过城市名（或"纬度,经度"字符串）查经纬度，计算上升星座。
+    支持全球任意城市：内置库精确匹配 → 模糊匹配 → 经纬度直接输入。
+    返回 (None, None, None) 如果无法解析出生地。
+    """
+    lat, lon_deg, resolved_name = parse_city_or_coords(city)
+    if lat is None:
         return None, None, None
-    lat, lon_deg = coords
-    return calc_ascendant(year, month, day, hour, minute, lat, lon_deg)
+    tz_offset_hours, _tz_name, _est = get_timezone_offset_hours(lat, lon_deg, year, month, day)
+    return calc_ascendant(year, month, day, hour, minute, lat, lon_deg, tz_offset_hours)
+
+
+def get_ascendant_full(year, month, day, hour, minute, city):
+    """
+    完整版上升星座计算：返回上升星座 + 真太阳时校正详情 + 时区信息。
+    用于报告中同时展示上升星座结果和真太阳时校正过程。
+
+    返回字典，含 sign / longitude / near_boundary / resolved_city /
+    lat / lon / true_solar_time / tz_name / tz_is_estimated，
+    若城市无法解析则返回 {"error": "..."}
+    """
+    lat, lon_deg, resolved_name = parse_city_or_coords(city)
+    if lat is None:
+        return {"error": f"城市「{city}」无法识别，且不是合法的「纬度,经度」格式"}
+
+    tz_offset_hours, tz_name, tz_estimated = get_timezone_offset_hours(lat, lon_deg, year, month, day)
+    sign, asc_lon, near_boundary = calc_ascendant(year, month, day, hour, minute, lat, lon_deg, tz_offset_hours)
+    tst = calc_true_solar_time(year, month, day, hour, minute, lat, lon_deg, tz_offset_hours=tz_offset_hours)
+
+    return {
+        "sign": sign,
+        "longitude": asc_lon,
+        "near_boundary": near_boundary,
+        "resolved_city": resolved_name,
+        "lat": lat,
+        "lon": lon_deg,
+        "true_solar_time": tst,
+        "tz_name": tz_name,
+        "tz_is_estimated": tz_estimated,
+    }
 
 
 # ============================================================
@@ -1566,20 +1769,32 @@ def analyze_person(member):
     )
     moon_boundary_note = "⚠️ 月亮处于星座边界附近（±3°），建议用专业软件确认" if moon_near_boundary else ""
 
-    # 上升星座（选填城市）
+    # 上升星座 + 真太阳时校正（选填城市，支持内置库城市名/模糊匹配/经纬度直接输入，覆盖全球任意城市）
     rising_sign = None
     rising_lon = None
     rising_near_boundary = False
     rising_note = ""
+    true_solar_time_info = None
     if birth_city:
-        rs, rlon, rnear = get_ascendant_by_city(s_year, s_month, s_day, s_hour, s_minute, birth_city)
-        if rs:
-            rising_sign = rs
-            rising_lon = rlon
-            rising_near_boundary = rnear
-            rising_note = "⚠️ 上升星座处于边界附近" if rnear else ""
+        asc_full = get_ascendant_full(s_year, s_month, s_day, s_hour, s_minute, birth_city)
+        if "error" not in asc_full:
+            rising_sign = asc_full["sign"]
+            rising_lon = asc_full["longitude"]
+            rising_near_boundary = asc_full["near_boundary"]
+            true_solar_time_info = asc_full["true_solar_time"]
+            true_solar_time_info["resolved_city"] = asc_full["resolved_city"]
+            true_solar_time_info["lat"] = asc_full["lat"]
+            true_solar_time_info["lon"] = asc_full["lon"]
+            note_parts = []
+            if rising_near_boundary:
+                note_parts.append("⚠️ 上升星座处于边界附近")
+            if asc_full["resolved_city"] != birth_city:
+                note_parts.append(f"（已将「{birth_city}」解析为「{asc_full['resolved_city']}」）")
+            if asc_full.get("tz_is_estimated"):
+                note_parts.append("⚠️ 时区偏移为粗略估算，未校正夏令时/历史时区变更")
+            rising_note = " ".join(note_parts)
         else:
-            rising_note = f"⚠️ 城市「{birth_city}」不在内置库中，上升星座无法计算"
+            rising_note = f"⚠️ {asc_full['error']}，上升星座无法计算。可直接输入纬度,经度（如 22.78,100.98）代替城市名"
 
     # 三星组合解读
     astro_combo_reading = _zodiac_combo_reading(sun_sign, moon_sign, rising_sign)
@@ -1640,6 +1855,7 @@ def analyze_person(member):
         "rising_sign": rising_sign,
         "rising_longitude": rising_lon,
         "rising_boundary_note": rising_note,
+        "true_solar_time": true_solar_time_info,
         # 三星组合解读
         "astro_combo_reading": astro_combo_reading,
         # 紫微（完整版）

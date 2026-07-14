@@ -35,7 +35,7 @@ metadata:
 1. **公历出生日期**（年月日）
 2. **出生时间**（精确到分钟最佳，至少到时辰）
 3. **性别**（影响紫微大运方向）
-4. **是否为真太阳时**（若未说明，默认北京时间，提示可能有偏差）
+4. **出生城市**（用于自动计算真太阳时校正与上升星座，支持全球任意城市，无需手动判断真太阳时偏差）
 5. **姓名**（如提供真实姓名，将自动进行三才五格测算；若仅提供代号则跳过）
 6. **姓氏字数**（若为复姓如欧阳、司马等，需确认；默认单姓）
 7. **MBTI类型**（可选，若用户提供则纳入三层叙事分析；注明「当前测试结果」，与底层功能栈区分）
@@ -343,8 +343,10 @@ sign, info, sun_lon, near_boundary = get_zodiac_precise(year, month, day, hour, 
 # 月亮星座（Meeus Ch.47, ±1°精度）
 moon_sign, deg_in_sign, near_boundary, moon_lon = get_moon_sign(year, month, day, hour, minute)
 
-# 上升星座（整宫制，需出生城市）
-rising_sign, asc_lon, near_boundary = get_ascendant_by_city(year, month, day, hour, minute, city)
+# 上升星座（整宫制，支持全球任意城市，自动真太阳时校正）
+asc_full = get_ascendant_full(year, month, day, hour, minute, city)
+# 返回: {"sign", "longitude", "near_boundary", "resolved_city", "lat", "lon", "true_solar_time", "tz_name", "tz_is_estimated"}
+# true_solar_time 内含: true_solar_hour/true_solar_time_str/longitude_correction_min/equation_of_time_min/total_correction_min/tz_offset_hours
 
 # 三星组合解读
 combo = _zodiac_combo_reading(sun_sign, moon_sign, rising_sign)
@@ -354,7 +356,12 @@ combo = _zodiac_combo_reading(sun_sign, moon_sign, rising_sign)
 
 1. **太阳星座**：公历生日对应星座（精确到分钟，星座切换边界±2°时附加不确定提示）
 2. **月亮星座**：出生时刻月球位置对应星座（边界±3°时附加不确定提示）
-3. **上升星座**：出生时刻地平线东方升起的星座（需提供出生城市，支持40+城市）
+3. **上升星座**：出生时刻地平线东方升起的星座（需提供出生城市，支持全球任意城市）
+   - 城市解析支持：内置453+个中国全境地市级城市+全球350+主要城市（精确匹配→去后缀模糊匹配→子串匹配），也可直接输入“纬度,经度”坐标覆盖任意地点
+   - **真太阳时校正**：自动计算标准时→真太阳时的全部修正，包含经度时差（4分钟/度，基于时区中央经线）+ 时差方程式（Equation of Time，Meeus近似公式，基于太阳平均黄经/近点角/黄赤交角）
+   - **中国地区特殊规则**：中国大陆/港澳台全境（包括新疆、西藏等地理时区非UTC+8的地区）法定报时统一使用北京时间，因此“标准时区”强制为UTC+8，但“经度时差”仍根据出生地的实际经度计算（乌鲁木齐、拉萨等地的真太阳时校正会明显大于北京、上海等城市）
+   - 境外城市使用 timezonefinder + pytz 离线查询当地时区，自动处理历史时区变更/夏令时（如纽约、伦敦等）
+   - 若城市无法识别，返回明确报错并提示可用纬经度代替
 4. **三星组合解读**：太阳（核心意志/自我认同）× 月亮（情绪需求/安全感）× 上升（社交界面/第一印象）综合分析
 
 > **注意**：太阳不是外在表现，而是意识层核心自我；第一印象主要由上升承担。
