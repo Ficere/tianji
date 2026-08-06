@@ -26,7 +26,20 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install lunarcalendar pyyaml
+          pip install -r requirements.txt
+          pip install pyyaml jsonschema
+
+      - name: Assert runtime dependencies are importable
+        # 防止 CI 在依赖缺失的降级路径上「假绿灯」通过
+        run: |
+          python - <<'PY'
+          import importlib.util, sys
+          missing = [m for m in ("zhdate", "timezonefinder", "pytz")
+                     if not importlib.util.find_spec(m)]
+          if missing:
+              sys.exit(f"❌ 缺少运行时依赖: {', '.join(missing)}")
+          print("✅ 运行时依赖齐备，脚本将以完整精度运行")
+          PY
 
       - name: Validate SKILL.md frontmatter
         run: |
@@ -43,23 +56,97 @@ jobs:
           print(f"✅ SKILL.md 验证通过: name={meta['name']}, version={meta.get('metadata', {}).get('version', 'N/A')}")
           PY
 
+      - name: Run unit test suite
+        run: python tests/test_suite.py
+
+      - name: Validate examples against reading schema
+        run: |
+          python - <<'PY'
+          import glob, json, sys
+          import jsonschema
+          schema = json.load(open("schemas/reading_v8.schema.json", encoding="utf-8"))
+          validator = jsonschema.Draft202012Validator(schema)
+          failed = False
+          for path in sorted(glob.glob("examples/*.json")):
+              data = json.load(open(path, encoding="utf-8"))
+              errors = sorted(validator.iter_errors(data), key=lambda e: e.path)
+              if errors:
+                  failed = True
+                  print(f"❌ {path} 不符合 schema:")
+                  for e in errors:
+                      print(f"   - {'/'.join(str(p) for p in e.absolute_path)}: {e.message}")
+              else:
+                  print(f"✅ {path} 符合 schema")
+          sys.exit(1 if failed else 0)
+          PY
+
+      - name: Check synastry score arithmetic in examples
+        # 合盘各分项之和必须等于 total，防止示例内部自相矛盾
+        run: |
+          python - <<'PY'
+          import glob, json, sys
+          failed = False
+          for path in sorted(glob.glob("examples/*.json")):
+              data = json.load(open(path, encoding="utf-8"))
+              cs = (data.get("synastry") or {}).get("composite_scores")
+              if not cs:
+                  continue
+              parts = sum(v["score"] for k, v in cs.items() if k != "total")
+              if parts != cs["total"]:
+                  failed = True
+                  print(f"❌ {path}: 分项之和 {parts} ≠ total {cs['total']}")
+              else:
+                  print(f"✅ {path}: 合盘分项之和 = total = {parts}")
+          sys.exit(1 if failed else 0)
+          PY
+
       - name: Smoke test fortune_calc.py
         run: |
           cat > /tmp/test.json <<'EOF'
           {
             "members": [
               {"name": "测试", "gender": "男", "solar_date": "1994-04-15", "birth_time": "14:44",
-               "lunar": {"month": 3, "day": 5}}
+               "birth_city": "北京"}
             ]
           }
           EOF
           python scripts/fortune_calc.py --input /tmp/test.json --output /tmp/out.json
-          test -s /tmp/out.json && echo "✅ fortune_calc.py 运行正常"
+          python - <<'PY'
+          import json, sys
+          d = json.load(open("/tmp/out.json", encoding="utf-8"))
+          m = d["members"][0]
+          assert m["bazi"] == ["甲戌", "戊辰", "辛未", "乙未"], f"四柱回归失败: {m['bazi']}"
+          assert m["warnings"] == [], f"依赖齐备时不应有降级告警: {m['warnings']}"
+          assert m["chenggu"]["总重数"] > 0, "称骨未计算"
+          print("✅ fortune_calc.py 运行正常且无降级告警")
+          PY
 
       - name: Smoke test name_wuge_calc.py
         run: |
-          python scripts/name_wuge_calc.py --name "郭昱辰" --surname-len 1 > /tmp/name.json
+          python scripts/name_wuge_calc.py --name "郭昱辰" > /tmp/name.json
           test -s /tmp/name.json && echo "✅ name_wuge_calc.py 运行正常"
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "scripts")
+          from name_wuge_calc import calc_wuge, detect_surname_len
+          # 复姓自动识别回归
+          assert detect_surname_len("欧阳娜娜") == 2
+          assert detect_surname_len("司马相如") == 2
+          assert detect_surname_len("张三丰") == 1
+          assert detect_surname_len("欧阳") == 1  # 长度2不判复姓，否则名字为空
+          r = calc_wuge("欧阳娜娜")
+          assert r["姓名类型"] == "复姓复名", r["姓名类型"]
+          assert r["姓氏字数"] == 2
+          # 显式指定时不被自动识别覆盖
+          assert calc_wuge("欧阳娜娜", 1)["姓氏字数"] == 1
+          print("✅ 复姓自动识别回归通过")
+          PY
+
+      - name: Smoke test generate_html.py
+        run: |
+          python scripts/generate_html.py --reading examples/example_personal.json --output /tmp/r1.html
+          python scripts/generate_html.py --reading examples/example_synastry.json --output /tmp/r2.html
+          test -s /tmp/r1.html && test -s /tmp/r2.html && echo "✅ generate_html.py 渲染正常"
 
       - name: Validate with gh skill (agentskills.io spec)
         continue-on-error: true

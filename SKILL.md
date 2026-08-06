@@ -3,7 +3,7 @@ name: tianji
 description: "天机 —— 综合命理测算技能。一站式完成八字五行、称骨、紫微斗数（14主星+四化+大限）、西洋星座（太阳/月亮/上升）、三才五格姓名测算及多场景合盘；支持结构化 reading.json 输出与静态HTML可视化报告渲染。当用户提到命理测算、算命、八字、五行、称骨、紫微、星座、合盘、三才五格、姓名测算、姓名打分、名字吉凶、综合测算、一站式测算、天机、怎么和他沟通、如何安排工作、亲子养育建议时使用此技能。" 
 metadata:
   author: computer
-  version: '8.0.0'
+  version: '8.1.0'
   language: zh-CN
 ---
 
@@ -37,7 +37,7 @@ metadata:
 3. **性别**（影响紫微大运方向）
 4. **出生城市**（用于自动计算真太阳时校正与上升星座，支持全球任意城市，无需手动判断真太阳时偏差）
 5. **姓名**（如提供真实姓名，将自动进行三才五格测算；若仅提供代号则跳过）
-6. **姓氏字数**（若为复姓如欧阳、司马等，需确认；默认单姓）
+6. **姓氏字数**（脚本内置 90+ 复姓表自动识别，通常无需询问；仅在罕见复姓或自动识别有误时才确认）
 7. **MBTI类型**（可选，若用户提供则纳入三层叙事分析；注明「当前测试结果」，与底层功能栈区分）
 
 #### 1.2 场景识别（多人时必须执行）
@@ -143,15 +143,25 @@ metadata:
 使用 `scripts/fortune_calc.py` 进行批量计算。该脚本接受JSON格式的输入：
 
 ```bash
-# 首次使用请先安装依赖（用于公历→农历自动转换）
-pip install zhdate
+# 首次使用请先安装依赖
+pip install -r requirements.txt
 
 python scripts/fortune_calc.py --input data.json --output result.json
 ```
 
 **⚠️ 重要依赖：**
 - `zhdate`（必须）：公历→农历自动转换，用于称骨计算。若未安装，月和日骨重将固定为正月初一，称骨结果严重偏差。
+- `timezonefinder` + `pytz`（境外出生地必须）：离线时区查询。未安装时时区按经度估算，遇夏令时/历史时区变更会导致上升星座偏差约 1 小时。
 - `ephem`（可选）：月亮星座更高精度计算。
+
+**⚠️ 输出前必检查 `warnings` 字段：**
+每个成员的结果都含 `warnings` 数组。若不为空，说明对应模块走了降级路径：
+
+| code | 影响 | 处理方式 |
+|------|------|----------|
+| `ZHDATE_MISSING` | 称骨不可用 | **不得输出称骨结果**，提示用户安装依赖后重算 |
+| `TIMEZONE_ESTIMATED` | 上升星座可能偏差半个星座 | 输出时需明确标注不确定性 |
+| `CITY_UNRESOLVED` | 无上升星座与真太阳时 | 请用户改传「纬度,经度」 |
 
 输入JSON格式（`lunar` 字段可省略，脚本会自动从公历转换；若用户已知精确农历可传入以覆盖自动转换）：
 ```json
@@ -293,8 +303,14 @@ result = calc_ziwei_full(year_gan, year_zhi, lunar_month, lunar_day, hour_float,
 使用 `scripts/name_wuge_calc.py` 进行计算：
 
 ```bash
+# 复姓（欧阳/司马/诸葛/上官等）自动识别，无需传 --surname-len
+python scripts/name_wuge_calc.py --name "欧阳娜娜"
+
+# 仅当自动识别不符预期时才显式指定
 python scripts/name_wuge_calc.py --name "张三" --surname-len 1
 ```
+
+输出中的 `姓氏字数` / `姓氏字数自动识别` 字段会说明实际采用的拆分方式。
 
 批量计算：
 ```bash
