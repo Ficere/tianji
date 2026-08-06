@@ -32,6 +32,7 @@ from fortune_calc import (
     _jde_to_beijing,
     DI_ZHI, ZODIAC_ORDER,
 )
+from fortune_calc import analyze_person, analyze_synastry
 
 
 # ============================================================
@@ -432,6 +433,144 @@ class TestEndToEnd(unittest.TestCase):
         }
         result = analyze_person(member)
         self.assertIsNone(result["rising_sign"])
+
+
+# ============================================================
+# 合盘评分契约回归（防止「文档说100、脚本算105」这类漂移）
+# ============================================================
+
+# 与 SKILL.md §9.1、schemas/reading_v8.schema.json 严格一致
+SYNASTRY_BANDS = {
+    "wuxing_balance": 20,
+    "wuxing_complete": 5,
+    "shengxiao": 20,
+    "xingzuo": 15,
+    "riZhu": 20,
+    "chenggu": 15,
+    "xingming": 5,
+}
+
+
+def _make_member(idx, seed_rand, with_name=True):
+    names = ["张伟", "李娜", "王芳", "刘洋", "陈静", "赵磊", "欧阳明", "司马光"]
+    y = 1950 + seed_rand.randint(0, 55)
+    return {
+        "name": names[idx % len(names)] if with_name else "",
+        "gender": "男" if idx % 2 == 0 else "女",
+        "solar_date": f"{y}-{seed_rand.randint(1, 12):02d}-{seed_rand.randint(1, 28):02d}",
+        "birth_time": f"{seed_rand.randint(0, 23):02d}:{seed_rand.choice([0, 15, 30, 45]):02d}",
+    }
+
+
+class TestSynastryScoreContract(unittest.TestCase):
+    """
+    对 analyze_synastry 的**真实计算输出**做回归，而不是只校验 examples/*.json。
+
+    背景：v8.1 之前脚本实际上限为 105 分（五行平衡给到 25、称骨给到 20、
+    姓名项完全未实现），与 README / SKILL.md / schema 的 100 分契约不符；
+    且因三项按人对累加，2 人组最高 77 分、5 人组最高 105 分，分数不可横向比较。
+    这些偏差只校验示例文件是抓不到的。
+    """
+
+    RANDOM_TRIALS = 120
+
+    def _iter_cases(self):
+        import random
+        for with_name in (True, False):
+            for n in (2, 3, 5):
+                rnd = random.Random(20250101 + n * 7 + int(with_name))
+                for _ in range(self.RANDOM_TRIALS):
+                    members = [
+                        analyze_person(_make_member(i, rnd, with_name))
+                        for i in range(n)
+                    ]
+                    yield n, with_name, analyze_synastry(members)
+
+    def test_each_dimension_within_band(self):
+        """每个分项都必须落在其声明的分值区间内。"""
+        for n, with_name, r in self._iter_cases():
+            cs = r["composite_scores"]
+            for key, cap in SYNASTRY_BANDS.items():
+                self.assertIn(key, cs, f"{n}人合盘缺少分项 {key}")
+                score = cs[key]["score"]
+                self.assertGreaterEqual(score, 0, f"{key} 为负：{score}")
+                self.assertLessEqual(
+                    score, cap,
+                    f"{n}人（{'有' if with_name else '无'}姓名）{key}={score} 超出上限 {cap}",
+                )
+
+    def test_total_equals_sum_and_never_exceeds_max(self):
+        """total 必须等于分项之和，且不得超过 max_possible。"""
+        for n, with_name, r in self._iter_cases():
+            cs = r["composite_scores"]
+            parts = round(sum(cs[k]["score"] for k in SYNASTRY_BANDS), 1)
+            self.assertAlmostEqual(
+                parts, r["score"], places=1,
+                msg=f"{n}人：分项之和 {parts} ≠ total {r['score']}",
+            )
+            self.assertLessEqual(
+                r["score"], r["max_possible"],
+                f"{n}人：total {r['score']} 超过满分 {r['max_possible']}",
+            )
+            self.assertLessEqual(r["max_possible"], 100)
+
+    def test_max_possible_reflects_name_availability(self):
+        """全员有姓名 → 满分100；否则姓名项计0分、满分95。"""
+        for n, with_name, r in self._iter_cases():
+            if with_name:
+                self.assertEqual(r["max_possible"], 100, f"{n}人有姓名却非满分100")
+            else:
+                self.assertEqual(r["max_possible"], 95, f"{n}人无姓名却非满分95")
+                self.assertEqual(r["composite_scores"]["xingming"]["score"], 0)
+
+    def test_score_is_group_size_invariant(self):
+        """
+        同一量纲检查：各组人数的得分区间应大致重叠，
+        不应出现「5人组普遍高出一整档」的累加式伪高分。
+        """
+        import statistics
+        means = {}
+        for n in (2, 3, 5):
+            scores = [r["score"] for m, w, r in self._iter_cases() if m == n and w]
+            means[n] = statistics.mean(scores)
+        spread = max(means.values()) - min(means.values())
+        self.assertLess(
+            spread, 12,
+            f"不同人数的平均分差异过大（{means}），说明评分仍随人数系统性漂移",
+        )
+
+    def test_known_pair_is_deterministic_and_documented(self):
+        """固定输入的黄金用例，锁死口径变更。"""
+        a = analyze_person({"name": "张伟", "gender": "男",
+                            "solar_date": "1990-05-20", "birth_time": "14:30"})
+        b = analyze_person({"name": "李娜", "gender": "女",
+                            "solar_date": "1992-08-15", "birth_time": "09:00"})
+        r1 = analyze_synastry([a, b])
+        r2 = analyze_synastry([a, b])
+        self.assertEqual(r1["score"], r2["score"], "同一输入两次计算结果不一致")
+        self.assertEqual(r1["pair_count"], 1)
+        self.assertEqual(r1["max_possible"], 100)
+        self.assertTrue(0 <= r1["score"] <= 100)
+        self.assertIn("★", r1["rating"])
+
+    def test_rating_matches_percentage_thresholds(self):
+        """评级必须由 total/max_possible 百分比推出，而非绝对分。"""
+        for n, with_name, r in self._iter_cases():
+            pct = r["score"] / r["max_possible"] * 100
+            self.assertAlmostEqual(pct, r["percentage"], places=1)
+            expected = (
+                "极佳" if pct >= 85 else
+                "良好" if pct >= 70 else
+                "中等" if pct >= 55 else
+                "有待改善" if pct >= 40 else "需多加注意"
+            )
+            self.assertIn(expected, r["rating"], f"{pct:.1f}% 对应评级错误：{r['rating']}")
+
+    def test_single_member_returns_note(self):
+        """不足2人时返回提示而非评分。"""
+        a = analyze_person({"name": "张伟", "gender": "男",
+                            "solar_date": "1990-05-20", "birth_time": "14:30"})
+        self.assertIn("note", analyze_synastry([a]))
 
 
 # ============================================================

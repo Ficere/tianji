@@ -1730,7 +1730,7 @@ def analyze_person(member):
         if bazi[i] is None:
             bazi[i] = computed[i]
         elif bazi[i] != computed[i]:
-            print(f"⚠️ {name}: 输入{pillar_names[i]}「{bazi[i]}」与计算结果「{computed[i]}」不一致，已自动修正")
+            print(f"⚠️ {name}: 输入{pillar_names[i]}「{bazi[i]}」与计算结果「{computed[i]}」不一致，已自动修正", file=sys.stderr)
             bazi[i] = computed[i]
 
     year_gz = bazi[0]
@@ -1841,12 +1841,26 @@ def analyze_person(member):
         from name_wuge_calc import calc_wuge
         wuge_result = calc_wuge(name, surname_len)
         if "error" in wuge_result:
-            print(f"⚠️ {name}: 三才五格计算失败 - {wuge_result['error']}")
+            # 未提供姓名属正常场景（合盘时姓名项自动降为不计分），不刷警告
+            if name:
+                print(f"⚠️ {name}: 三才五格计算失败 - {wuge_result['error']}", file=sys.stderr)
+                warnings.append({
+                    "code": "WUGE_FAILED",
+                    "field": "wuge",
+                    "severity": "low",
+                    "message": f"三才五格计算失败：{wuge_result['error']}。姓名相关分析与合盘姓名项将不计分。",
+                })
             wuge_result = None
     except ImportError:
         pass
     except Exception as e:
-        print(f"⚠️ {name}: 三才五格计算异常 - {e}")
+        print(f"⚠️ {name}: 三才五格计算异常 - {e}", file=sys.stderr)
+        warnings.append({
+            "code": "WUGE_ERROR",
+            "field": "wuge",
+            "severity": "low",
+            "message": f"三才五格计算异常：{e}。姓名相关分析与合盘姓名项将不计分。",
+        })
 
     return {
         "name": name,
@@ -1901,9 +1915,144 @@ def analyze_person(member):
 # 合盘分析
 # ============================================================
 
+def _mean(values):
+    """空列表安全的平均值。"""
+    return sum(values) / len(values) if values else 0.0
+
+
+# ---- 地支关系表（模块级，供合盘与后续单支关系分析复用）----
+# 六合：子丑 寅亥 卯戌 辰酉 巳申 午未
+LIU_HE_SET = {frozenset(p) for p in [
+    ("子", "丑"), ("寅", "亥"), ("卯", "戌"),
+    ("辰", "酉"), ("巳", "申"), ("午", "未"),
+]}
+# 三合局：申子辰 寅午戌 巳酉丑 亥卯未
+SAN_HE_GROUPS = [
+    ("申", "子", "辰"), ("寅", "午", "戌"),
+    ("巳", "酉", "丑"), ("亥", "卯", "未"),
+]
+# 六冲：子午 丑未 寅申 卯酉 辰戌 巳亥
+LIU_CHONG_SET = {frozenset(p) for p in [
+    ("子", "午"), ("丑", "未"), ("寅", "申"),
+    ("卯", "酉"), ("辰", "戌"), ("巳", "亥"),
+]}
+# 相害：子未 丑午 寅巳 卯辰 申亥 酉戌
+XIANG_HAI_SET = {frozenset(p) for p in [
+    ("子", "未"), ("丑", "午"), ("寅", "巳"),
+    ("卯", "辰"), ("申", "亥"), ("酉", "戌"),
+]}
+# 相刑：寅巳申（无恩之刑）、丑戌未（恃势之刑）、子卯（无礼之刑）
+XIANG_XING_SET = {frozenset(p) for p in [
+    ("寅", "巳"), ("巳", "申"), ("寅", "申"),
+    ("丑", "戌"), ("戌", "未"), ("丑", "未"),
+    ("子", "卯"),
+]}
+# 相破：子酉 午卯 申巳 寅亥 辰丑 戌未
+XIANG_PO_SET = {frozenset(p) for p in [
+    ("子", "酉"), ("午", "卯"), ("申", "巳"),
+    ("寅", "亥"), ("辰", "丑"), ("戌", "未"),
+]}
+
+# 天干五合
+TIAN_GAN_HE = {"甲己": "化土", "乙庚": "化金", "丙辛": "化水", "丁壬": "化木", "戊癸": "化火"}
+
+# ---- 合盘评分口径（总分 100，与 SKILL.md §9.1 及 reading schema 一致）----
+# 关键设计：所有「按人对累加」的维度一律改为**对均值**，
+# 使 2 人与 5 人的得分处于同一量纲、可直接比较。
+BAND_WUXING_BALANCE = 20
+BAND_WUXING_COMPLETE = 5
+BAND_SHENGXIAO = 20
+BAND_XINGZUO = 15
+BAND_RIZHU = 20
+BAND_CHENGGU = 15
+BAND_XINGMING = 5
+
+# 星座相位 → 该维度得分（满分 15）
+XINGZUO_ASPECT_SCORE = {
+    0: 15,    # 合相：同星座，高度共鸣
+    120: 15,  # 三分相：最和谐
+    60: 14,   # 六分相：和谐
+    30: 11,   # 半六分相：轻微和谐
+    180: 8,   # 对分相：强吸引但有对冲张力
+    90: 5,    # 四分相：明显摩擦
+    150: 2,   # 十二分相：能量不协调
+}
+
+# 生肖单对：基准 12 分 + 关系增减，逐对夹取到 [0, 20] 后取均值
+SHENGXIAO_BASE = 12
+SHENGXIAO_DELTA = {
+    "六合": 8, "三合": 6, "同支比和": 2,
+    "六冲": -7, "相害": -4, "相刑": -3, "相破": -2,
+}
+
+# 日主单对：按优先级取绝对分（合 > 相生 > 比和 > 相克），满分 20
+RIZHU_PAIR_SCORE = {"天干五合": 20, "相生": 16, "比和": 14, "相克": 6}
+
+
+def _score_shengxiao_pair(z1, z2):
+    """单对生肖得分（0-20）与关系标签列表。"""
+    labels = []
+    delta = 0
+    if z1 == z2:
+        labels.append("同支比和")
+        delta += SHENGXIAO_DELTA["同支比和"]
+    else:
+        pair_fs = frozenset([z1, z2])
+        if pair_fs in LIU_HE_SET:
+            labels.append("六合")
+            delta += SHENGXIAO_DELTA["六合"]
+        if any(z1 in g and z2 in g for g in SAN_HE_GROUPS):
+            labels.append("三合")
+            delta += SHENGXIAO_DELTA["三合"]
+        for name, table in (("六冲", LIU_CHONG_SET), ("相害", XIANG_HAI_SET),
+                            ("相刑", XIANG_XING_SET), ("相破", XIANG_PO_SET)):
+            if pair_fs in table:
+                labels.append(name)
+                delta += SHENGXIAO_DELTA[name]
+    if not labels:
+        labels.append("无特殊关系")
+    return max(0, min(BAND_SHENGXIAO, SHENGXIAO_BASE + delta)), labels
+
+
+def _score_rizhu_pair(g1, g2):
+    """单对日主得分（0-20）与关系标签。优先级：天干五合 > 相生 > 比和 > 相克。"""
+    sheng_map = {"木": "火", "火": "土", "土": "金", "金": "水", "水": "木"}
+    ke_map = {"木": "土", "土": "水", "水": "火", "火": "金", "金": "木"}
+    for pair, hua in TIAN_GAN_HE.items():
+        if {g1, g2} == set(pair):
+            return RIZHU_PAIR_SCORE["天干五合"], f"天干合（{pair}{hua}）"
+    wx1, wx2 = WU_XING_GAN[g1], WU_XING_GAN[g2]
+    if sheng_map[wx1] == wx2 or sheng_map[wx2] == wx1:
+        return RIZHU_PAIR_SCORE["相生"], "日主相生"
+    if wx1 == wx2:
+        return RIZHU_PAIR_SCORE["比和"], "日主比和"
+    if ke_map[wx1] == wx2 or ke_map[wx2] == wx1:
+        return RIZHU_PAIR_SCORE["相克"], "日主相克"
+    return RIZHU_PAIR_SCORE["比和"], "日主中性"
+
+
 def analyze_synastry(members_results):
+    """
+    多人合盘评分。
+
+    评分口径（总分 100，与 SKILL.md §9.1 及 schemas/reading_v8.schema.json 一致）：
+        五行平衡 20 + 五行俱全 5 + 生肖 20 + 星座 15 + 日主 20 + 称骨 15 + 姓名 5
+
+    重要：星座 / 日主 / 生肖三项按「人对均值」计算而非累加，
+    因此 2 人与 5 人的得分处于同一量纲、可直接比较。
+    （v8.1 之前为累加式，导致 5 人组最高可得 105 分而 2 人组最高仅 77 分。）
+
+    若任一成员缺少姓名五格结果，姓名项计 0 分且不计入满分，
+    此时 `max_possible` 为 95；`rating` 始终基于 total / max_possible 的百分比。
+    """
     if len(members_results) < 2:
         return {"note": "至少需要2人才能进行合盘分析"}
+
+    pairs = [
+        (members_results[i], members_results[j])
+        for i in range(len(members_results))
+        for j in range(i + 1, len(members_results))
+    ]
 
     group_wx = {"金": 0, "木": 0, "水": 0, "火": 0, "土": 0}
     for m in members_results:
@@ -1913,180 +2062,147 @@ def analyze_synastry(members_results):
     balance = max(group_wx.values()) - min(group_wx.values())
     missing_group = [k for k, v in group_wx.items() if v == 0]
 
-    score = 0
     details = []
 
-    # 1. 五行平衡 (25分)
+    # 1. 五行平衡（20分）
     if balance <= 3:
-        s = 25
+        wx_balance_score = 20
     elif balance <= 5:
-        s = 20
+        wx_balance_score = 15
     elif balance <= 8:
-        s = 14
+        wx_balance_score = 10
     else:
-        s = 8
-    score += s
-    details.append(f"五行平衡度（差异{balance}）+{s}分")
-    if not missing_group:
-        score += 5
-        details.append("五行俱全加分 +5分")
+        wx_balance_score = 5
+    details.append(f"五行平衡度（最大-最小差异{balance}）+{wx_balance_score}分")
 
-    # 2. 生肖关系 (20分)
-    # ---- 关系表（均以 frozenset 匹配，避免方向问题）----
-    # 六合：子丑 寅亥 卯戌 辰酉 巳申 午未
-    liu_he_set = {
-        frozenset(p) for p in [
-            ("子", "丑"), ("寅", "亥"), ("卯", "戌"),
-            ("辰", "酉"), ("巳", "申"), ("午", "未"),
-        ]
-    }
-    # 三合局：申子辰 寅午戌 巳酉丑 亥卯未（两支不同才算）
-    san_he_groups = [
-        ("申", "子", "辰"), ("寅", "午", "戌"),
-        ("巳", "酉", "丑"), ("亥", "卯", "未"),
-    ]
-    # 六冲：子午 丑未 寅申 卯酉 辰戌 巳亥
-    liu_chong_set = {
-        frozenset(p) for p in [
-            ("子", "午"), ("丑", "未"), ("寅", "申"),
-            ("卯", "酉"), ("辰", "戌"), ("巳", "亥"),
-        ]
-    }
-    # 相害：子未 丑午 寅巳 卯辰 申亥 酉戌
-    xiang_hai_set = {
-        frozenset(p) for p in [
-            ("子", "未"), ("丑", "午"), ("寅", "巳"),
-            ("卯", "辰"), ("申", "亥"), ("酉", "戌"),
-        ]
-    }
-    # 相刑（-2分）：
-    #   无礼之刑：寅巳申（两两相刑）
-    #   无恩之刑：丑戌未（两两相刑）
-    #   无义之刑：子卯（互刑）
-    xiang_xing_set = {
-        frozenset(p) for p in [
-            ("寅", "巳"), ("巳", "申"), ("寅", "申"),
-            ("丑", "戌"), ("戌", "未"), ("丑", "未"),
-            ("子", "卯"),
-        ]
-    }
+    # 2. 五行俱全（5分）
+    wx_complete_score = BAND_WUXING_COMPLETE if not missing_group else 0
+    details.append(
+        "五行俱全 +5分" if wx_complete_score
+        else f"合计缺{'、'.join(missing_group)} +0分"
+    )
 
-    sx_score = 10
-    sx_details = []
-    pairs = []
-    for i in range(len(members_results)):
-        for j in range(i + 1, len(members_results)):
-            pairs.append((members_results[i], members_results[j]))
-
+    # 3. 生肖关系（20分，按对均值）
+    sx_pair_scores = []
     for m1, m2 in pairs:
         z1, z2 = m1["year_zhi"], m2["year_zhi"]
-        pair_fs = frozenset([z1, z2])
+        s, labels = _score_shengxiao_pair(z1, z2)
+        sx_pair_scores.append(s)
+        details.append(f"{m1['name']}({z1})与{m2['name']}({z2}){'/'.join(labels)} {s}/20")
+    shengxiao_score = round(_mean(sx_pair_scores), 1)
 
-        # 同支：仅标注，不加减分
-        if z1 == z2:
-            sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})同支比和")
-            continue  # 同支不再叠加三合
-
-        if pair_fs in liu_he_set:
-            sx_score += 7
-            sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})六合 +7分")
-        for group in san_he_groups:
-            # z1 != z2 已在上方 continue 处理，此处仅处理不同支
-            if z1 in group and z2 in group:
-                sx_score += 5
-                sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})三合{group} +5分")
-        if pair_fs in liu_chong_set:
-            sx_score -= 5
-            sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})六冲 -5分")
-        if pair_fs in xiang_hai_set:
-            sx_score -= 3
-            sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})相害 -3分")
-        if pair_fs in xiang_xing_set:
-            sx_score -= 2
-            sx_details.append(f"{m1['name']}({z1})与{m2['name']}({z2})相刑 -2分")
-
-    score += min(max(sx_score, 0), 20)
-    details.extend(sx_details)
-
-    # 3. 星座 (15分)
-    zs = 0
+    # 4. 星座相位（15分，按对均值）
+    xz_pair_scores = []
     for m1, m2 in pairs:
         angle = zodiac_angle(m1["zodiac"], m2["zodiac"])
-        if angle in [0, 60, 120]:
-            zs += 5
-            details.append(f"{m1['name']}与{m2['name']}星座和谐({angle}°) +5分")
-        elif angle == 30:
-            zs += 4
-            details.append(f"{m1['name']}与{m2['name']}星座较和谐({angle}°) +4分")
-        elif angle == 180:
-            zs += 3
-            details.append(f"{m1['name']}与{m2['name']}星座对冲互补({angle}°) +3分")
-        elif angle == 90:
-            zs += 2
-            details.append(f"{m1['name']}与{m2['name']}星座有摩擦({angle}°) +2分")
-        elif angle == 150:
-            zs += 1
-            details.append(f"{m1['name']}与{m2['name']}星座需调整({angle}°) +1分")
-    score += min(zs, 15)
+        s = XINGZUO_ASPECT_SCORE.get(angle, 8)
+        xz_pair_scores.append(s)
+        details.append(f"{m1['name']}与{m2['name']}星座相位{angle}° {s}/15")
+    xingzuo_score = round(_mean(xz_pair_scores), 1)
 
-    # 4. 日主关系 (20分)
-    tian_gan_he = {"甲己": "化土", "乙庚": "化金", "丙辛": "化水", "丁壬": "化木", "戊癸": "化火"}
-    sheng_map = {"木": "火", "火": "土", "土": "金", "金": "水", "水": "木"}
-    ke_map = {"木": "土", "土": "水", "水": "火", "火": "金", "金": "木"}
-    rg = 0
+    # 5. 日主关系（20分，按对均值）
+    rz_pair_scores = []
     for m1, m2 in pairs:
-        g1, g2 = m1["day_gan"], m2["day_gan"]
-        wx1, wx2 = WU_XING_GAN[g1], WU_XING_GAN[g2]
-        for pair, result in tian_gan_he.items():
-            if (g1 == pair[0] and g2 == pair[1]) or (g1 == pair[1] and g2 == pair[0]):
-                rg += 7
-                details.append(f"{m1['name']}与{m2['name']}天干合({pair}{result}) +7分")
-        if wx1 == wx2:
-            rg += 5
-            details.append(f"{m1['name']}与{m2['name']}日主比和 +5分")
-        elif sheng_map[wx1] == wx2 or sheng_map[wx2] == wx1:
-            rg += 5
-            details.append(f"{m1['name']}与{m2['name']}日主相生 +5分")
-        elif ke_map[wx1] == wx2 or ke_map[wx2] == wx1:
-            rg += 1
-            details.append(f"{m1['name']}与{m2['name']}日主相克 +1分")
-    score += min(rg, 20)
+        s, label = _score_rizhu_pair(m1["day_gan"], m2["day_gan"])
+        rz_pair_scores.append(s)
+        details.append(f"{m1['name']}({m1['day_gan']})与{m2['name']}({m2['day_gan']}){label} {s}/20")
+    rizhu_score = round(_mean(rz_pair_scores), 1)
 
-    # 5. 称骨 (20分)
+    # 6. 称骨对比（15分）
     avg_weight = sum(m["chenggu"]["总重数"] for m in members_results) / len(members_results)
     if avg_weight >= 45:
-        cs = 20
+        chenggu_score = 15
     elif avg_weight >= 40:
-        cs = 16
+        chenggu_score = 12
     elif avg_weight >= 35:
-        cs = 12
+        chenggu_score = 9
     elif avg_weight >= 30:
-        cs = 9
+        chenggu_score = 6
     else:
-        cs = 5
-    score += cs
-    details.append(f"团体平均骨重{avg_weight / 10:.1f}两 +{cs}分")
+        chenggu_score = 3
+    details.append(f"团体平均骨重{avg_weight / 10:.1f}两 +{chenggu_score}分")
 
-    # 评级
-    if score >= 85:
+    # 7. 姓名合盘（5分，全员均有三才五格结果时才计分）
+    xingming_score = 0.0
+    xingming_applicable = all(m.get("wuge") for m in members_results)
+    if xingming_applicable:
+        try:
+            import sys, os
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from name_wuge_calc import synastry_name_score
+            name_syn = synastry_name_score([m["wuge"] for m in members_results])
+            if name_syn:
+                xingming_score = round(name_syn["姓名合盘得分"] / 100 * BAND_XINGMING, 1)
+                details.append(
+                    f"姓名合盘 {name_syn['姓名合盘得分']}/100 → +{xingming_score}分"
+                )
+            else:
+                xingming_applicable = False
+        except Exception as e:
+            xingming_applicable = False
+            details.append(f"⚠️ 姓名合盘计算失败（{e}），本项不计分")
+    if not xingming_applicable:
+        details.append("未提供全员姓名，姓名项不计分（满分降为95）")
+
+    max_possible = (
+        BAND_WUXING_BALANCE + BAND_WUXING_COMPLETE + BAND_SHENGXIAO
+        + BAND_XINGZUO + BAND_RIZHU + BAND_CHENGGU
+        + (BAND_XINGMING if xingming_applicable else 0)
+    )
+
+    total = round(
+        wx_balance_score + wx_complete_score + shengxiao_score
+        + xingzuo_score + rizhu_score + chenggu_score + xingming_score,
+        1,
+    )
+    # 浮点累加保护：总分永不超过满分
+    total = min(total, max_possible)
+    if total == int(total):
+        total = int(total)
+
+    # 评级基于百分比，保证「未提供姓名」的组合不被系统性压低
+    pct = total / max_possible * 100 if max_possible else 0
+    if pct >= 85:
         rating = "★★★★★ 极佳组合"
-    elif score >= 70:
+    elif pct >= 70:
         rating = "★★★★☆ 良好组合"
-    elif score >= 55:
+    elif pct >= 55:
         rating = "★★★☆☆ 中等组合"
-    elif score >= 40:
+    elif pct >= 40:
         rating = "★★☆☆☆ 有待改善"
     else:
         rating = "★☆☆☆☆ 需多加注意"
+
+    # 与 reading schema 的 composite_scores 字段名对齐，便于直接校验
+    composite_scores = {
+        "total": total,
+        "wuxing_balance": {"score": wx_balance_score, "comment": f"合计五行最大-最小差异{balance}"},
+        "wuxing_complete": {
+            "score": wx_complete_score,
+            "comment": "合并后五行俱全" if wx_complete_score else f"合计缺{'、'.join(missing_group)}",
+        },
+        "shengxiao": {"score": shengxiao_score, "comment": f"{len(pairs)}对生肖关系均值"},
+        "xingzuo": {"score": xingzuo_score, "comment": f"{len(pairs)}对太阳星座相位均值"},
+        "riZhu": {"score": rizhu_score, "comment": f"{len(pairs)}对日主生克均值"},
+        "chenggu": {"score": chenggu_score, "comment": f"团体平均骨重{avg_weight / 10:.1f}两"},
+        "xingming": {
+            "score": xingming_score,
+            "comment": "姓名三才五格合盘" if xingming_applicable else "未提供全员姓名，本项不计分",
+        },
+    }
 
     return {
         "group_wx": group_wx,
         "balance": balance,
         "missing_group": missing_group,
-        "score": score,
+        "score": total,
+        "max_possible": max_possible,
+        "percentage": round(pct, 1),
         "rating": rating,
         "details": details,
         "avg_weight": avg_weight,
+        "pair_count": len(pairs),
+        "composite_scores": composite_scores,
     }
 
 
