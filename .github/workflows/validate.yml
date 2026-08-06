@@ -29,6 +29,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyyaml jsonschema
+          # 测试期专用：lunar-python 是与本仓库完全独立的第三方排盘实现，
+          # 仅用于交叉验证四柱与起运，不进 requirements.txt（非运行时依赖）。
+          pip install lunar-python
 
       - name: Assert runtime dependencies are importable
         # 防止 CI 在依赖缺失的降级路径上「假绿灯」通过
