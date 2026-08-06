@@ -218,6 +218,38 @@ jobs:
           print("✅ 复姓自动识别回归通过")
           PY
 
+      - name: Deep analysis invariants (喜忌互斥 / 五行全覆盖 / 用神在喜神内)
+        run: |
+          python - <<'PY'
+          import sys, random
+          sys.path.insert(0, "scripts")
+          from fortune_calc import analyze_person
+          random.seed(20260806)
+          WX = {"木", "火", "土", "金", "水"}
+          for i in range(120):
+              y = 1940 + random.randint(0, 70)
+              r = analyze_person({
+                  "name": "测试", "gender": random.choice(["男", "女"]),
+                  "solar_date": f"{y}-{random.randint(1,12):02d}-{random.randint(1,28):02d}",
+                  "birth_time": f"{random.randint(0,23):02d}:{random.randint(0,59):02d}",
+                  "birth_city": random.choice(["北京", "上海", ""]),
+              })
+              d = r.get("deep")
+              assert d is not None, f"深层分析失败: {r['warnings']}"
+              ys = d["yongshen"]
+              flat = ys["喜神"] + ys["忌神"] + ys["仇神"] + ys["闲神"]
+              assert len(flat) == len(set(flat)), f"五行重复归类 {flat}"
+              assert set(flat) == WX, f"五行归类不全 {set(flat)}"
+              assert not ys["用神"] or ys["用神"] in ys["喜神"], "用神不在喜神内"
+              assert 0.1 <= ys["置信度"]["score"] <= 0.95 and ys["置信度"]["reasons"]
+              assert 0 <= d["day_master"]["强弱分"] <= 100
+              zr = d["zhi_relations"]
+              assert zr["合会数"] + zr["刑冲数"] + zr["天干合数"] == len(zr["关系列表"])
+              cv = d["cross_validation"]
+              assert sum(cv["统计"].values()) == len(cv["检测项"])
+          print("✅ 深层分析不变量校验通过（120 组随机命造）")
+          PY
+
       - name: Smoke test generate_html.py
         run: |
           python scripts/generate_html.py --reading examples/example_personal.json --output /tmp/r1.html

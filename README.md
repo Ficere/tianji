@@ -117,6 +117,8 @@ python scripts/generate_html.py --reading examples/example_personal.json --outpu
 
 | 版本 | 要点 |
 |------|------|
+| **v8.2** | 深层分析层 `deep`：人元司令藏干十神、刑冲合会、用神喜忌（含流派声明与置信度）、跨系统一致性检测。**纯计算层增强，报告篇幅与 v8.1 持平** |
+| **v8.1** | 合盘计分改为人对均值制（修复 5 人组可得 105 分的量纲缺陷）；补齐姓名合盘计分；schema 单一真源约束 |
 | **v8.0** | `reading.json` 结构化输出 + JSON Schema 约束 + 静态 HTML 报告渲染器 |
 | **v7.x** | 全球任意城市真太阳时校正与上升星座；中国全境强制 UTC+8 但按实际经度修正 |
 | **v6.x** | 紫微四化飞星、大限序列、格局识别；月亮星座（Meeus Ch.47） |
@@ -124,6 +126,11 @@ python scripts/generate_html.py --reading examples/example_personal.json --outpu
 | **v4.x** | 四柱全自动计算（立春精确时刻 Meeus VSOP87 + 节气月柱 + JDN 日柱）；姓名综合评级与三才评级分离 |
 
 > 四柱算法已与独立实现（`lunar-python`）在多组边界用例上交叉校验，包含立春当日、跨年冬月等场景。
+
+**关于 v8.2 的深层分析**：`analyze_person()` 返回值新增 `deep` 区块，内含用神喜忌、藏干十神、刑冲合会与跨系统一致性检测。
+设计原则是**只增加解读深度、不增加输出篇幅** —— schema 对 `overall_analysis`（≤260 字）等字段设有硬性长度上限，
+深层结论须溶进既有段落，不得新开章节。用神取法各家分歧极大，脚本因此显式输出所依流派、取用依据链与置信度（0.1–0.95），
+并在扶抑与调候结论相反时标注另一流派的相反结论，而非伪装成唯一定论。
 > 晚子时（23:00–24:00）采用「不换日柱」派，与部分排盘工具的「换日柱」派结果不同，属门派选择而非计算误差。
 >
 > Four-pillar results are cross-verified against an independent implementation (`lunar-python`) on boundary cases.

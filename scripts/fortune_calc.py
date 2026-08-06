@@ -368,6 +368,32 @@ def calc_day_pillar(year, month, day):
     return TIAN_GAN[gan_idx] + DI_ZHI[zhi_idx]
 
 
+def days_since_jieling(year, month, day, hour=0, minute=0):
+    """
+    自本月节令（立春/惊蛰/清明…）起算到出生时刻已过的天数（浮点）。
+
+    人元司令分野需要这个日差才能定出当令藏干；
+    取不到时返回 None，深层分析会退回本气并下调置信度。
+    """
+    try:
+        jieqi_dates = _get_month_jieqi_dates(year)
+        birth_val = (year, month, day, hour, minute)
+        cur = None
+        for i in range(len(jieqi_dates) - 1):
+            a, b = jieqi_dates[i], jieqi_dates[i + 1]
+            if (a[0], a[1], a[2], a[3], a[4]) <= birth_val < (b[0], b[1], b[2], b[3], b[4]):
+                cur = a
+                break
+        if cur is None:
+            return None
+        jd_term = gregorian_to_jd(cur[0], cur[1], cur[2], cur[3], cur[4])
+        jd_birth = gregorian_to_jd(year, month, day, hour, minute)
+        delta = jd_birth - jd_term
+        return round(delta, 3) if delta >= 0 else None
+    except Exception:
+        return None
+
+
 def calc_four_pillars(year, month, day, hour=0, minute=0):
     """
     一次性计算完整四柱八字。
@@ -1862,7 +1888,7 @@ def analyze_person(member):
             "message": f"三才五格计算异常：{e}。姓名相关分析与合盘姓名项将不计分。",
         })
 
-    return {
+    result = {
         "name": name,
         "gender": gender,
         "solar_date": solar_date,
@@ -1909,6 +1935,27 @@ def analyze_person(member):
         # 姓名
         "wuge": wuge_result,
     }
+
+    # ---- 深层分析层（藏干十神 / 刑冲合会 / 用神喜忌 / 跨系统一致性）----
+    # 全部属于计算层，供叙事层加深理解，不对应任何新增报告章节。
+    try:
+        from deep_analysis import build_deep_analysis
+        _sp = solar_date.split("-")
+        _hh, _mm = (birth_time.split(":") + ["0"])[:2] if birth_time else ("0", "0")
+        _days = days_since_jieling(int(_sp[0]), int(_sp[1]), int(_sp[2]),
+                                   int(_hh), int(_mm))
+        result["deep"] = build_deep_analysis(result, _days)
+    except Exception as e:
+        result["deep"] = None
+        warnings.append({
+            "code": "DEEP_ANALYSIS_FAILED",
+            "field": "deep",
+            "severity": "medium",
+            "message": f"深层分析（用神/藏干十神/跨系统验证）计算失败：{e}。"
+                       f"基础排盘不受影响，但解读深度会下降。",
+        })
+
+    return result
 
 
 # ============================================================

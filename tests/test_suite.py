@@ -577,6 +577,150 @@ class TestSynastryScoreContract(unittest.TestCase):
 # 报告生成器
 # ============================================================
 
+class TestDeepAnalysis(unittest.TestCase):
+    """深层分析契约：藏干十神 / 刑冲合会 / 用神喜忌 / 跨系统一致性。
+
+    这些不是「看起来对不对」的测试，而是命理逻辑上不允许被违反的硬约束：
+    喜忌不能重叠、五行必须被完整归类、用神必在喜神之列、
+    忌神必须是「克用神者」而非「用神所克者」。
+    """
+
+    WX = {"木", "火", "土", "金", "水"}
+    CASES = [
+        ("张伟", "1990-05-20", "14:30", "北京"),
+        ("李娜", "1992-08-15", "09:00", "上海"),
+        ("王芳", "1978-12-25", "03:20", "广州"),
+        ("刘洋", "2001-02-04", "23:50", ""),
+        ("欧阳明", "1965-07-07", "12:00", "北京"),
+    ]
+
+    @classmethod
+    def setUpClass(cls):
+        from fortune_calc import analyze_person
+        cls.people = [
+            analyze_person({"name": n, "gender": "男", "solar_date": d,
+                            "birth_time": t, "birth_city": c})
+            for n, d, t, c in cls.CASES
+        ]
+
+    def test_deep_block_present(self):
+        for r in self.people:
+            self.assertIsNotNone(r.get("deep"), f"{r['name']} 缺少 deep 区块")
+            self.assertEqual(
+                set(r["deep"].keys()),
+                {"canggan_shishen", "zhi_relations", "day_master",
+                 "yongshen", "cross_validation"})
+
+    def test_canggan_shishen_complete(self):
+        for r in self.people:
+            cg = r["deep"]["canggan_shishen"]
+            self.assertEqual(len(cg["四柱藏干"]), 4)
+            for pillar in cg["四柱藏干"]:
+                self.assertTrue(pillar["藏干"], f"{pillar['柱']}柱藏干为空")
+                for h in pillar["藏干"]:
+                    self.assertIn(h["气"], ("本气", "中气", "余气"))
+                    self.assertGreater(h["力量"], 0)
+            self.assertEqual(
+                sum(1 for p in cg["四柱藏干"] for h in p["藏干"] if h["司令"]), 1,
+                "月令司令必须且只能有一个")
+            self.assertIn(cg["日主通根"]["质量"], ("根深", "有根", "根浅", "无根"))
+
+    def test_xi_ji_mutually_exclusive_and_exhaustive(self):
+        """喜/忌/仇/闲必须互斥且恰好覆盖五行——这是喜忌表可信的最低门槛。"""
+        for r in self.people:
+            ys = r["deep"]["yongshen"]
+            groups = [ys["喜神"], ys["忌神"], ys["仇神"], ys["闲神"]]
+            flat = [w for g in groups for w in g]
+            self.assertEqual(len(flat), len(set(flat)),
+                             f"{r['name']} 五行被重复归类：{flat}")
+            self.assertEqual(set(flat), self.WX,
+                             f"{r['name']} 五行归类不完整：{set(flat)}")
+
+    def test_yongshen_within_favorable(self):
+        for r in self.people:
+            ys = r["deep"]["yongshen"]
+            if ys["用神"]:
+                self.assertIn(ys["用神"], ys["喜神"],
+                              f"{r['name']} 用神 {ys['用神']} 不在喜神之列")
+
+    def test_ji_shen_is_what_attacks_yongshen(self):
+        """忌神方向性：中和局以调候定用神时，忌神须为克用神者。"""
+        from deep_analysis import KE
+        for r in self.people:
+            ys = r["deep"]["yongshen"]
+            if ys["扶抑调候关系"] == "仅调候" and ys["用神"]:
+                attacker = next(k for k, v in KE.items() if v == ys["用神"])
+                self.assertIn(attacker, ys["忌神"],
+                              f"{r['name']} 忌神应含克用神的 {attacker}")
+                self.assertNotIn(KE[ys["用神"]], ys["忌神"],
+                                 f"{r['name']} 忌神方向反了")
+
+    def test_tongguan_never_contradicts_jishen(self):
+        """通关神若本身属忌，不得并入喜神。"""
+        for r in self.people:
+            ys = r["deep"]["yongshen"]
+            tg = ys.get("通关")
+            if tg and not tg["并入喜神"]:
+                self.assertNotIn(tg["元素"], ys["喜神"])
+
+    def test_day_master_score_bounded(self):
+        for r in self.people:
+            dm = r["deep"]["day_master"]
+            self.assertGreaterEqual(dm["强弱分"], 0)
+            self.assertLessEqual(dm["强弱分"], 100)
+            self.assertIn(dm["标签"], ("身强", "偏强", "中和", "偏弱", "身弱"))
+
+    def test_confidence_bounded_and_justified(self):
+        for r in self.people:
+            conf = r["deep"]["yongshen"]["置信度"]
+            self.assertIn(conf["level"], ("high", "medium", "low"))
+            self.assertGreaterEqual(conf["score"], 0.1)
+            self.assertLessEqual(conf["score"], 0.95)
+            self.assertTrue(conf["reasons"], "置信度必须给出理由，不能是裸分数")
+
+    def test_conflict_declares_school(self):
+        """扶抑与调候冲突时，必须声明流派而非假装唯一定论。"""
+        for r in self.people:
+            ys = r["deep"]["yongshen"]
+            if ys["扶抑调候关系"] == "冲突":
+                self.assertTrue(ys["注意事项"], f"{r['name']} 冲突未声明流派")
+
+    def test_zhi_relations_wellformed(self):
+        for r in self.people:
+            zr = r["deep"]["zhi_relations"]
+            self.assertEqual(
+                zr["合会数"] + zr["刑冲数"] + zr["天干合数"],
+                len(zr["关系列表"]), "关系计数与关系列表必须对得上")
+            self.assertTrue(zr["总体基调"])
+
+    def test_cross_validation_conflicts_are_kept(self):
+        """分歧比一致更有信息量，检测项不得被静默丢弃。"""
+        for r in self.people:
+            cv = r["deep"]["cross_validation"]
+            self.assertEqual(sum(cv["统计"].values()), len(cv["检测项"]))
+            for c in cv["检测项"]:
+                self.assertIn(c["结论"], ("一致", "部分一致", "分歧", "不确定"))
+                self.assertTrue(c["说明"])
+            self.assertTrue(cv["叙事指引"])
+
+    def test_no_crash_across_wide_date_range(self):
+        from fortune_calc import analyze_person
+        import random
+        random.seed(20260806)
+        for _ in range(60):
+            y = 1940 + random.randint(0, 70)
+            spec = {"name": "测试", "gender": random.choice(["男", "女"]),
+                    "solar_date": f"{y}-{random.randint(1,12):02d}-{random.randint(1,28):02d}",
+                    "birth_time": f"{random.randint(0,23):02d}:00",
+                    "birth_city": "北京"}
+            r = analyze_person(spec)
+            self.assertIsNotNone(r.get("deep"), f"{spec} 深层分析失败")
+            ys = r["deep"]["yongshen"]
+            flat = ys["喜神"] + ys["忌神"] + ys["仇神"] + ys["闲神"]
+            self.assertEqual(set(flat), self.WX)
+            self.assertEqual(len(flat), len(set(flat)))
+
+
 def generate_report():
     """生成文字测试报告，方便记录交叉验证结果。"""
     loader = unittest.TestLoader()
