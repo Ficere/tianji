@@ -92,6 +92,20 @@ XIANG_XING = {
     frozenset(("戌", "未")): "恃势之刑", frozenset(("丑", "未")): "恃势之刑",
     frozenset(("子", "卯")): "无礼之刑",
 }
+# 三刑全备（子卯为二支相刑，不属「三刑全备」，仍走两两判定）
+SAN_XING_GROUPS = {
+    ("寅", "巳", "申"): "无恩之刑",
+    ("丑", "戌", "未"): "恃势之刑",
+}
+
+# 合/冲的分量差着数倍，基调不能只数条目数
+HE_WEIGHT = {"三会": 1.5, "三合": 1.2, "六合": 0.6, "半合": 0.6}
+# 合化成局时对「化神」五行的力量加成。
+# 只在「化神得令」时施加——古法「合而不化」者众，不得令的合局不改变五行格局。
+HUA_BONUS = {"三会": 1.5, "三合": 1.2, "半合": 0.5, "六合": 0.3, "天干五合": 0.4}
+CHONG_WEIGHT = {"三刑": 1.5, "六冲": 1.0, "相刑": 0.7, "自刑": 0.5,
+                "相害": 0.4, "相破": 0.3}
+
 ZI_XING = {"辰", "午", "酉", "亥"}  # 自刑：同支相见
 XIANG_PO = {frozenset(p) for p in [
     ("子", "酉"), ("午", "卯"), ("申", "巳"),
@@ -120,6 +134,17 @@ def get_shishen(day_gan, other_gan):
     if KE[other_wx] == day_wx:
         return "七杀" if same_yy else "正官"
     return "未知"
+
+
+def _is_adjacent(pos_label_str):
+    """位置标签形如「年月」「月日」「年时」。相邻两柱作用力全发，隔位打折。"""
+    order = "年月日时"
+    if not pos_label_str or len(pos_label_str) != 2:
+        return True
+    a, b = pos_label_str[0], pos_label_str[1]
+    if a not in order or b not in order:
+        return True
+    return abs(order.index(a) - order.index(b)) == 1
 
 
 def _ke_of(element):
@@ -163,7 +188,9 @@ def _si_ling_gan(month_zhi, days_into_month):
     if not fenye:
         return None, True
     if days_into_month is None:
-        return fenye[-1][0] if len(fenye) == 1 else fenye[0][0], True
+        # 退回本气。本气是分野序列的**末段**（余气→中气→本气按日推移），
+        # 也是该支占日最多、最具代表性的一段，取首段会误取上月余气。
+        return fenye[-1][0], True
     acc = 0
     for gan, days in fenye:
         acc += days
@@ -189,10 +216,21 @@ def analyze_canggan_shishen(bazi, day_gan, days_into_month=None):
         gan, zhi = pillar[0], pillar[1]
         pos = PILLAR_NAMES[idx]
         hidden = []
-        for qi_idx, cg in enumerate(CANG_GAN.get(zhi, [])):
+        cg_list = CANG_GAN.get(zhi, [])
+        # 分野与藏干出自不同传承，四正之支（子午卯酉）及亥的司令干可能不在藏干表内：
+        #   子月壬、卯月甲、午月丙、酉月庚 —— 与本气同五行异阴阳，可归位到本气；
+        #   亥月戊 —— 土，与亥所藏壬甲异五行，无从归位，此时不加司令权重并如实标注。
+        si_ling_host = None
+        if pos == "月" and si_ling:
+            if si_ling in cg_list:
+                si_ling_host = si_ling
+            else:
+                si_ling_host = next(
+                    (c for c in cg_list if WU_XING_GAN[c] == WU_XING_GAN[si_ling]), None)
+        for qi_idx, cg in enumerate(cg_list):
             qi = QI_LEVELS[qi_idx] if qi_idx < len(QI_LEVELS) else "余气"
             cg_wx = WU_XING_GAN[cg]
-            is_si_ling = (pos == "月" and cg == si_ling)
+            is_si_ling = (pos == "月" and cg == si_ling_host)
             # 通根：藏干与日主同五行（比劫根）或生日主（印根）
             root_type = None
             if cg_wx == day_wx:
@@ -240,6 +278,9 @@ def analyze_canggan_shishen(bazi, day_gan, days_into_month=None):
             "五行": WU_XING_GAN[si_ling] if si_ling else None,
             "十神": get_shishen(day_gan, si_ling) if si_ling else None,
             "按本气估算": si_ling_estimated,
+            # 司令干是否落在月支藏干内。False 表示该段司令之气不由本支承载
+            #（如亥月首七日戊土司令），此时不加 1.5 倍司令权重，避免虚增月令力量。
+            "入藏干": si_ling in CANG_GAN.get(month_zhi, []) if si_ling else False,
         },
         "四柱藏干": pillars,
         "日主通根": {
@@ -297,6 +338,20 @@ def analyze_zhi_relations(bazi):
                 "说明": f"半合{wx}，力量弱于三合，需岁运引动",
             })
 
+    # --- 三刑全备（寅巳申 / 丑戌未）---
+    # 三支俱全时作用力远大于两两相刑，须合并为一条；
+    # 否则寅巳申会被拆成寅巳、巳申、寅申三条（有重复地支时更多），
+    # 令「刑冲数」虚高，进而污染总体基调与置信度。
+    san_xing_members = set()
+    for group, gname in SAN_XING_GROUPS.items():
+        if all(z in zhis for z in group):
+            san_xing_members |= set(group)
+            items.append({
+                "类型": "三刑", "关系": f"{''.join(group)}三刑（{gname}）",
+                "位置": "全局", "强度": "极强",
+                "说明": f"{gname}全备，主刑伤、官非、反复纠缠，力远过两两相刑",
+            })
+
     # --- 两两关系 ---
     for i in range(4):
         for j in range(i + 1, 4):
@@ -327,7 +382,7 @@ def analyze_zhi_relations(bazi):
                     "说明": ("紧邻相冲，冲力全发，主变动、分离、健康隐患"
                              if adjacent else "隔位相冲，冲力打折"),
                 })
-            if fs in XIANG_XING:
+            if fs in XIANG_XING and not (z1 in san_xing_members and z2 in san_xing_members):
                 items.append({
                     "类型": "相刑", "关系": f"{z1}{z2}相刑（{XIANG_XING[fs]}）",
                     "位置": pos_label(i, j), "强度": "中",
@@ -366,25 +421,45 @@ def analyze_zhi_relations(bazi):
     # 天干合另计：它作用于「意志层」，与地支的「环境层」不同质，混在一起会稀释信号
     gan_he = sum(1 for it in items if it["类型"] == "天干五合")
     harmony = sum(1 for it in items if it["类型"] in ("三会", "三合", "半合", "六合"))
-    conflict = sum(1 for it in items if it["类型"] in ("六冲", "相刑", "相害", "相破", "自刑"))
-    if conflict == 0 and harmony == 0:
+    conflict = sum(1 for it in items
+                   if it["类型"] in ("六冲", "三刑", "相刑", "相害", "相破", "自刑"))
+
+    # 基调不能只数条目：六冲与相破的分量差着数倍，
+    # 且「隔位」比「紧邻」要打折。故另算加权合力/冲力，由它决定基调。
+    he_power = round(sum(HE_WEIGHT.get(it["类型"], 0) *
+                         (0.6 if it.get("位置") not in ("全局", "局部") and
+                          not _is_adjacent(it.get("位置")) else 1.0)
+                         for it in items
+                         if it["类型"] in ("三会", "三合", "半合", "六合")), 2)
+    chong_power = round(sum(CHONG_WEIGHT.get(it["类型"], 0) *
+                            (0.6 if it.get("位置") not in ("全局",) and
+                             not _is_adjacent(it.get("位置")) else 1.0)
+                            for it in items
+                            if it["类型"] in ("六冲", "三刑", "相刑", "相害",
+                                              "相破", "自刑")), 2)
+
+    if chong_power == 0 and he_power == 0:
         tone = "平静无合无冲，命局结构松散，外力牵动小"
-    elif conflict > harmony:
-        tone = "刑冲多于合会，命局动荡、变动频繁，宜以稳制动"
-    elif harmony > conflict:
-        tone = "合会多于刑冲，命局黏合度高，稳定但也易受牵绊难以脱身"
+    elif max(chong_power, he_power) < 1.0:
+        # 只有零星隔位轻作用时，比例再悬殊也谈不上「显著」
+        tone = "仅见零星轻微作用，地支之间牵动有限，格局主要取决于五行本身的旺衰"
+    elif chong_power > he_power * 1.3:
+        tone = "刑冲之力显著过合会，命局动荡、变动频繁，宜以稳制动"
+    elif he_power > chong_power * 1.3:
+        tone = "合会之力显著过刑冲，命局黏合度高，稳定但也易受牵绊难以脱身"
     else:
-        tone = "合冲相当，命局张力明显，成败常在一念之间"
+        tone = "合冲之力相当，命局张力明显，成败常在一念之间"
 
     return {"关系列表": items, "合会数": harmony, "刑冲数": conflict,
-            "天干合数": gan_he, "总体基调": tone}
+            "天干合数": gan_he, "合力": he_power, "冲力": chong_power,
+            "总体基调": tone}
 
 
 # ============================================================
 # 3. 日主强弱量化
 # ============================================================
 
-def analyze_day_master(bazi, canggan_detail):
+def analyze_day_master(bazi, canggan_detail, relations=None):
     """
     以「生扶力量 vs 克泄耗力量」的加权比值量化日主强弱。
 
@@ -392,6 +467,7 @@ def analyze_day_master(bazi, canggan_detail):
       - 日主自身固定计 1.2 分生扶
       - 年/月/时三天干各计 1.0 分，按十神归入生扶或克泄耗
       - 每个藏干计「柱位权重 × 气权重 × 司令加成(1.5)」
+      - 合化成局且化神得令者，按 HUA_BONUS 计入对应一方
       - strength = 生扶 / (生扶 + 克泄耗) × 100，50 为中和基准
     """
     day_gan = bazi[2][0]
@@ -425,6 +501,22 @@ def analyze_day_master(bazi, canggan_detail):
                     basis.append(
                         f"{p['柱']}支{p['干支'][1]}藏{h['干']}（{h['十神']}·{h['气']}"
                         f"{'·司令' if h['司令'] else ''}）+{w} 克泄耗")
+
+    # 合化局：得令方化，其化神五行须计入强弱，否则「三会火局」这类
+    # 足以改写格局的结构在强弱判定中完全隐形。
+    day_wx_self = WU_XING_GAN[day_gan]
+    if relations:
+        for it in relations["关系列表"]:
+            bonus = HUA_BONUS.get(it["类型"])
+            hua_wx = it.get("五行")
+            if not (bonus and it.get("化神得令") and hua_wx):
+                continue
+            if hua_wx == day_wx_self or SHENG[hua_wx] == day_wx_self:
+                sheng_fu += bonus
+                basis.append(f"{it['关系']}·化神得令 +{bonus} 生扶")
+            else:
+                ke_xie_hao += bonus
+                basis.append(f"{it['关系']}·化神得令 +{bonus} 克泄耗")
 
     total = sheng_fu + ke_xie_hao
     score = round(sheng_fu / total * 100, 1) if total else 50.0
@@ -511,15 +603,29 @@ def _tiaohou(day_gan, month_zhi):
             "说明": f"生于{month_zhi}月，寒暖适中，调候非急务，以扶抑定用神"}
 
 
-def _element_powers(bazi, canggan_detail):
-    """全局五行力量分布（天干各1.0，藏干按权重），用于判断用神是否有力。"""
+def _element_powers(bazi, canggan_detail, relations=None):
+    """
+    全局五行力量分布（天干各1.0，藏干按权重），用于判断用神是否有力。
+
+    合化局须计入：三会火局可以整个改写格局，若只数天干藏干，
+    「三会成局」这条信息就等于算了不用。仅在「化神得令」时加成——
+    不得令者古法多作「合而不化」，不改变五行格局。
+    """
     powers = {w: 0.0 for w in ("木", "火", "土", "金", "水")}
     for pillar in bazi:
         powers[WU_XING_GAN[pillar[0]]] += 1.0
     for p in canggan_detail["四柱藏干"]:
         for h in p["藏干"]:
             powers[h["五行"]] += h["力量"]
-    return {k: round(v, 3) for k, v in powers.items()}
+
+    hua_applied = []
+    if relations:
+        for it in relations["关系列表"]:
+            bonus = HUA_BONUS.get(it["类型"])
+            if bonus and it.get("化神得令") and it.get("五行"):
+                powers[it["五行"]] += bonus
+                hua_applied.append(f"{it['关系']}（化神得令 +{bonus}）")
+    return {k: round(v, 3) for k, v in powers.items()}, hua_applied
 
 
 def determine_yongshen(bazi, canggan_detail, day_master, relations):
@@ -535,7 +641,7 @@ def determine_yongshen(bazi, canggan_detail, day_master, relations):
     day_wx = WU_XING_GAN[day_gan]
     month_zhi = bazi[1][1]
     score = day_master["强弱分"]
-    powers = _element_powers(bazi, canggan_detail)
+    powers, hua_applied = _element_powers(bazi, canggan_detail, relations)
 
     # 以日主为中心的五行角色
     yin_wx = next(k for k, v in SHENG.items() if v == day_wx)   # 生我者 → 印
@@ -697,12 +803,20 @@ def determine_yongshen(bazi, canggan_detail, day_master, relations):
     if canggan_detail["月令司令"]["按本气估算"]:
         conf_score -= 0.05
         conf_reasons.append("人元司令按本气估算（未精确到节令日差），月令权重略有误差")
+    elif not canggan_detail["月令司令"]["入藏干"]:
+        conf_score -= 0.05
+        conf_reasons.append(
+            f"当令之气为{canggan_detail['月令司令']['干']}，不在月支藏干之内"
+            f"（分野与藏干两套传承不一致），月令力量未计司令加成")
     if primary and powers.get(primary, 0) < 0.5:
         conf_score -= 0.15
         conf_reasons.append(f"用神{primary}在原局力量仅{powers.get(primary, 0)}，用神无力，须待岁运引至")
-    if relations["刑冲数"] >= 3:
+    if relations.get("冲力", 0) >= 2.5:
+        # 改用加权冲力而非条目数：六冲与相破的分量差数倍，数条目会误判
         conf_score -= 0.05
-        conf_reasons.append("原局刑冲繁多，五行力量易被引动改变，静态取用参考性下降")
+        conf_reasons.append(
+            f"原局刑冲之力偏重（冲力{relations['冲力']}），"
+            f"五行力量易被引动改变，静态取用参考性下降")
 
     if not conf_reasons:
         # 绝不输出没有依据的裸置信度
@@ -732,6 +846,7 @@ def determine_yongshen(bazi, canggan_detail, day_master, relations):
         "扶抑调候关系": agreement,
         "通关": tongguan,
         "五行力量": powers,
+        "合化加成": hua_applied,
         "判定依据": basis,
         "置信度": {"level": level, "score": conf_score, "reasons": conf_reasons},
         "注意事项": caveats,
@@ -874,19 +989,36 @@ def cross_validate(person, yongshen, day_master, relations):
                 f"姓名五行（{ren_wx}/{zong_wx}）既非喜亦非忌，对命局取用影响中性")
 
     # --- 4. 五行缺失 vs 姓名补足 ---
+    # 关键：缺失是否需补，取决于该五行是喜是忌。缺忌神是好事，
+    # 一律判「未补足 = 分歧」会把好事说成坏事。
     missing = person.get("missing_wx") or []
     if wuge and missing:
         wg = wuge.get("五格", {})
         name_all = {(wg.get(k) or {}).get("五行") for k in ("天格", "人格", "地格", "外格", "总格")}
         name_all.discard(None)
-        filled = set(missing) & name_all
-        if filled:
+        want = [w for w in missing if w in set(yongshen["喜神"])]
+        dont_want = [w for w in missing if w in set(yongshen["忌神"])]
+        filled_want = set(want) & name_all
+        filled_bad = set(dont_want) & name_all
+        if want and filled_want:
             add("missing_fill", "五行缺失补足", ["八字", "姓名"], "一致",
-                f"原局缺{'、'.join(missing)}，姓名五格中含{'、'.join(sorted(filled))}，形成补足")
-        else:
+                f"原局缺{'、'.join(want)}且正属喜用，姓名五格含{'、'.join(sorted(filled_want))}，"
+                f"恰成补足，是姓名与命局最实在的一处契合")
+        elif want and not filled_want:
             add("missing_fill", "五行缺失补足", ["八字", "姓名"], "分歧",
-                f"原局缺{'、'.join(missing)}，姓名五格（{'、'.join(sorted(name_all))}）未涉及，缺项未获补足。"
-                f"注意：五行缺失是否需补，须先看该五行是否为忌神——缺忌神反是好事")
+                f"原局缺{'、'.join(want)}且正属喜用，"
+                f"而姓名五格（{'、'.join(sorted(name_all)) or '无'}）未涉及，该缺口未获补足")
+        elif dont_want and filled_bad:
+            add("missing_fill", "五行缺失补足", ["八字", "姓名"], "分歧",
+                f"原局缺{'、'.join(dont_want)}本属忌神，缺反为吉；"
+                f"但姓名五格补入了{'、'.join(sorted(filled_bad))}，等于把忌神请回来，方向相反")
+        elif dont_want:
+            add("missing_fill", "五行缺失补足", ["八字", "姓名"], "一致",
+                f"原局缺{'、'.join(dont_want)}，而该五行正属忌神，"
+                f"缺之反吉；姓名亦未补入，无须视为缺陷")
+        else:
+            add("missing_fill", "五行缺失补足", ["八字", "姓名"], "不确定",
+                f"原局缺{'、'.join(missing)}，该五行于本命非喜非忌（闲神），补与不补影响有限")
 
     # --- 5. 星座元素 vs 日主五行倾向 ---
     zodiac = person.get("zodiac")
@@ -903,7 +1035,9 @@ def cross_validate(person, yongshen, day_master, relations):
                 add("temperament", "外显气质", ["八字", "星座"], "分歧",
                     f"太阳{zodiac}（{elem}）与日主{day_wx}气质不同向。"
                     f"多主社会形象与内在驱动不一致，他人眼中的他与他眼中的自己有落差——"
-                    f"这种落差本身往往是其消耗感的来源")
+                    f"这种落差本身往往是其消耗感的来源"
+                    f"（按：西洋四象与五行分属不同体系，其对应关系并无定说，"
+                    f"本条为四项检测中依据最弱者，宜作旁证而非主证）")
 
     # --- 汇总 ---
     # 统计用 Counter 泛化，避免新增结论类型（如「提示」）被静默漏计；
@@ -953,7 +1087,7 @@ def build_deep_analysis(person, days_into_month=None):
 
     canggan_detail = analyze_canggan_shishen(bazi, day_gan, days_into_month)
     relations = analyze_zhi_relations(bazi)
-    day_master = analyze_day_master(bazi, canggan_detail)
+    day_master = analyze_day_master(bazi, canggan_detail, relations)
     yongshen = determine_yongshen(bazi, canggan_detail, day_master, relations)
     cross = cross_validate(person, yongshen, day_master, relations)
 

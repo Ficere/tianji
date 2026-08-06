@@ -703,6 +703,101 @@ class TestDeepAnalysis(unittest.TestCase):
                 self.assertTrue(c["说明"])
             self.assertTrue(cv["叙事指引"])
 
+    def test_siling_fallback_is_benqi_not_yuqi(self):
+        """拿不到节令日差时须退回本气（分野末段），取首段会误取上月余气。"""
+        from deep_analysis import _si_ling_gan, SI_LING_FEN_YE, CANG_GAN
+        for zhi in SI_LING_FEN_YE:
+            got, estimated = _si_ling_gan(zhi, None)
+            self.assertTrue(estimated)
+            self.assertEqual(got, CANG_GAN[zhi][0],
+                             f"{zhi}月退回值应为本气 {CANG_GAN[zhi][0]}，实得 {got}")
+
+    def test_siling_marked_exactly_once_or_declared(self):
+        """分野与藏干出自不同传承，司令干可能不在藏干表内，此时须如实标注。"""
+        from deep_analysis import analyze_canggan_shishen, SI_LING_FEN_YE, CANG_GAN
+        for zhi in SI_LING_FEN_YE:
+            for day in range(0, 30):
+                r = analyze_canggan_shishen(
+                    ["甲子", f"丙{zhi}", "戊寅", "癸亥"], "戊", days_into_month=day)
+                marked = sum(1 for p in r["四柱藏干"]
+                             for h in p["藏干"] if h["司令"])
+                ml = r["月令司令"]
+                if ml["入藏干"] or any(
+                        __import__("deep_analysis").WU_XING_GAN[c]
+                        == ml["五行"] for c in CANG_GAN[zhi]):
+                    self.assertEqual(marked, 1,
+                                     f"{zhi}月第{day}日：司令标记应为1，实得{marked}")
+                else:
+                    self.assertEqual(marked, 0)
+                    self.assertFalse(ml["入藏干"],
+                                     "司令干不在藏干内时必须标注 入藏干=False")
+
+    def test_san_xing_merged_not_double_counted(self):
+        """寅巳申/丑戌未三刑全备须合并为一条，否则刑冲数虚高污染基调。"""
+        from deep_analysis import analyze_zhi_relations
+        for bazi, group in ((["甲寅", "乙巳", "戊申", "甲寅"], "寅巳申"),
+                            (["乙丑", "丙戌", "戊未", "乙丑"], "丑戌未")):
+            r = analyze_zhi_relations(bazi)
+            types = [it["类型"] for it in r["关系列表"]]
+            self.assertEqual(types.count("三刑"), 1, f"{group} 应有且仅有一条三刑")
+            self.assertEqual(types.count("相刑"), 0,
+                             f"{group} 三刑全备时不应再拆出两两相刑")
+
+    def test_zi_mao_xing_not_treated_as_san_xing(self):
+        """子卯为二支相刑，不属三刑全备，仍应走两两判定。"""
+        from deep_analysis import analyze_zhi_relations
+        r = analyze_zhi_relations(["甲子", "乙卯", "丙寅", "丁丑"])
+        types = [it["类型"] for it in r["关系列表"]]
+        self.assertIn("相刑", types)
+        self.assertNotIn("三刑", types)
+
+    def test_tone_uses_weighted_power_not_raw_count(self):
+        """六冲与相破分量差数倍，基调须由加权冲力决定而非条目数。"""
+        from deep_analysis import analyze_zhi_relations
+        for bazi in (["甲寅", "乙巳", "戊申", "甲寅"],
+                     ["甲子", "乙丑", "丙寅", "丁卯"],
+                     ["甲午", "丙子", "戊午", "庚子"]):
+            r = analyze_zhi_relations(bazi)
+            self.assertIn("合力", r)
+            self.assertIn("冲力", r)
+            self.assertGreaterEqual(r["合力"], 0)
+            self.assertGreaterEqual(r["冲力"], 0)
+
+    def test_hua_bonus_only_when_de_ling(self):
+        """合化加成只在化神得令时施加——合而不化者不改变五行格局。"""
+        from deep_analysis import (analyze_canggan_shishen, analyze_zhi_relations,
+                                   _element_powers)
+        bazi = ["庚午", "辛巳", "乙酉", "癸未"]   # 巳午未三会火局，生巳月，火得令
+        cg = analyze_canggan_shishen(bazi, "乙", 20)
+        rel = analyze_zhi_relations(bazi)
+        base, _ = _element_powers(bazi, cg, None)
+        with_hua, applied = _element_powers(bazi, cg, rel)
+        self.assertTrue(applied, "三会火局且化神得令，应有合化加成")
+        self.assertGreater(with_hua["火"], base["火"], "得令的三会局须提升化神力量")
+        for it in rel["关系列表"]:
+            if it.get("五行") and not it.get("化神得令"):
+                self.assertNotIn(it["关系"], " ".join(applied),
+                                 "不得令的合局不应加成")
+
+    def test_missing_element_that_is_jishen_is_not_a_defect(self):
+        """缺忌神反为吉，不得一律判作「未补足=分歧」。"""
+        from deep_analysis import cross_validate
+        for r in self.people:
+            cv = r["deep"]["cross_validation"]
+            ys = r["deep"]["yongshen"]
+            item = next((c for c in cv["检测项"] if c["id"] == "missing_fill"), None)
+            if item is None:
+                continue
+            missing = set(r.get("missing_wx") or [])
+            wg = (r.get("wuge") or {}).get("五格", {})
+            name_all = {(wg.get(k) or {}).get("五行")
+                        for k in ("天格", "人格", "地格", "外格", "总格")}
+            name_all.discard(None)
+            # 缺的全是忌神、且姓名也没补进来 → 不应判为分歧
+            if missing and missing <= set(ys["忌神"]) and not (missing & name_all):
+                self.assertEqual(item["结论"], "一致",
+                                 f"{r['name']} 缺的全是忌神且未被补入，不应判分歧")
+
     def test_no_crash_across_wide_date_range(self):
         from fortune_calc import analyze_person
         import random
