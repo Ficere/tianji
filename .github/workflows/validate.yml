@@ -4,7 +4,8 @@ on:
   push:
     branches: [master, main]
   pull_request:
-    branches: [master, main]
+    # 同时覆盖堆叠 PR（feat/** → fix/**），否则中间分支的 PR 不跑 CI
+    branches: [master, main, 'fix/**', 'feat/**']
 
 jobs:
   validate:
