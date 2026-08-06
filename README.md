@@ -101,20 +101,40 @@ git clone https://github.com/Ficere/tianji.git
 | **三才五格** | 康熙字典笔画（48700+ 字）、天格/人格/地格/外格/总格、81 数理吉凶、三才生克配置、综合评分与评级 |
 | **合盘评分** | 五行互补 + 生肖关系 + 星座 + 日主生克 + 称骨 + 姓名合盘，100 分制综合评定 |
 
-> **v4.0 新特性**：四柱八字现在完全由脚本自动计算，无需手动排盘。年柱基于立春精确时刻（Meeus VSOP87 太阳黄经算法），月柱基于 12 个月建节气的精确时刻，日柱基于儒略日编号，时柱基于五鼠遁。已经过多组边界用例交叉校验。
->
-> **v4.0 New**: Four pillars are now fully auto-calculated. Year pillar uses precise Lichun timing (Meeus VSOP87), month pillar uses exact Jieqi moments, day pillar uses JDN, hour pillar uses Wushu Dun. Cross-verified against reference sites.
+### 结构化输出与 HTML 报告 / Structured output & HTML report
 
-> **v4.1 修复**：三才五格新增「综合评级」，与「三才评级」明确区分。详见下方说明。
+除自然语言报告外，本技能还输出一份受 JSON Schema 约束的 `reading.json`，并可一键渲染为可分享的静态 HTML 报告（无外部依赖，双击即开）：
+
+```bash
+python scripts/generate_html.py --reading examples/example_personal.json --output report.html
+```
+
+- `schemas/reading_v8.schema.json` —— 解读结果的结构契约，CI 会校验所有 examples
+- `prompts/` —— 叙事生成提示词（个人 / 合盘）
+- `examples/` —— 个人与合盘两份完整示例，可直接渲染预览
+
+### 版本要点 / Release highlights
+
+| 版本 | 要点 |
+|------|------|
+| **v8.0** | `reading.json` 结构化输出 + JSON Schema 约束 + 静态 HTML 报告渲染器 |
+| **v7.x** | 全球任意城市真太阳时校正与上升星座；中国全境强制 UTC+8 但按实际经度修正 |
+| **v6.x** | 紫微四化飞星、大限序列、格局识别；月亮星座（Meeus Ch.47） |
+| **v5.x** | 多场景合盘（情侣/亲子/团队/管理者）与三层叙事整合 |
+| **v4.x** | 四柱全自动计算（立春精确时刻 Meeus VSOP87 + 节气月柱 + JDN 日柱）；姓名综合评级与三才评级分离 |
+
+> 四柱算法已与独立实现（`lunar-python`）在多组边界用例上交叉校验，包含立春当日、跨年冬月等场景。
+> 晚子时（23:00–24:00）采用「不换日柱」派，与部分排盘工具的「换日柱」派结果不同，属门派选择而非计算误差。
 >
-> **v4.1 Fix**: Added "Overall Rating" for name numerology, clearly separated from "Sancai Rating". See details below.
+> Four-pillar results are cross-verified against an independent implementation (`lunar-python`) on boundary cases.
+> Late Zi hour (23:00–24:00) follows the "keep the same day pillar" school — a documented convention choice, not an error.
 
 <details>
 <summary>合盘评分细则 / Scoring breakdown</summary>
 
 | 维度 | 分值 | 评估内容 |
 |------|------|----------|
-| 五行互补 | 25 | 合计五行平衡度、互补关系 |
+| 五行平衡 | 20 | 合计五行平衡度、互补关系 |
 | 五行俱全 | 5 | 是否五行齐全 |
 | 生肖关系 | 20 | 六合 / 三合 / 六冲 / 相害 |
 | 星座合盘 | 15 | 相位角度匹配度 |
@@ -201,7 +221,24 @@ git clone https://github.com/Ficere/tianji.git
 
 ## 独立脚本 / Standalone Scripts
 
-两个脚本均可脱离 Agent 平台独立运行（Python 3，无第三方依赖）：
+三个脚本均可脱离 Agent 平台独立运行（Python 3.9+）。
+
+### 依赖安装 / Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+| 依赖 | 必需性 | 缺失时的降级行为 |
+|------|--------|----------------|
+| `zhdate` | **必需** | 农历退化为「正月初一」，**称骨结果不可用** |
+| `timezonefinder` + `pytz` | 境外出生地必需 | 时区按经度粗略估算，遇夏令时/历史时区变更时上升星座可能偏差约 1 小时 |
+| `ephem` | 可选 | 使用内置 Meeus Ch.47 近似算法计算月亮星座（±1°） |
+
+> 任何因依赖缺失而降级的结果，都会写入输出 JSON 的 `warnings` 字段（包含 `code` / `field` / `severity`），
+> 供调用方判断是否可信。`warnings: []` 才代表全部模块按完整精度计算。
+>
+> Any dependency-related degradation is reported in the `warnings` array of the output JSON — an empty array means full precision.
 
 **命理测算引擎：**
 ```bash
@@ -210,8 +247,21 @@ python scripts/fortune_calc.py --input data.json --output result.json
 
 **三才五格姓名测算：**
 ```bash
+# 复姓（欧阳/司马/诸葛等 90+ 个）自动识别，无需手工指定
+python scripts/name_wuge_calc.py --name "欧阳娜娜"
+# 也可显式覆盖自动识别
 python scripts/name_wuge_calc.py --name "张三" --surname-len 1
 python scripts/name_wuge_calc.py --input names.json --output result.json
+```
+
+**HTML 报告渲染：**
+```bash
+python scripts/generate_html.py --reading reading.json --output report.html
+```
+
+**运行测试：**
+```bash
+python tests/test_suite.py
 ```
 
 <details>
@@ -240,7 +290,9 @@ python scripts/name_wuge_calc.py --input names.json --output result.json
 }
 ```
 
-> `bazi` 字段可省略，脚本基于天文算法自动计算完整四柱。若提供了 bazi，脚本会自动校验并修正。`surname_len` 用于三才五格计算（1=单姓，2=复姓）。
+> `bazi` 字段可省略，脚本基于天文算法自动计算完整四柱。若提供了 bazi，脚本会自动校验并修正。
+> `lunar` 字段可省略（需 `zhdate`）。`surname_len` 也可省略，复姓会自动识别；仅在自动识别不符预期时才需手工指定。
+> 推荐填写 `birth_city` 以启用真太阳时校正与上升星座。
 
 </details>
 
@@ -263,12 +315,26 @@ python scripts/name_wuge_calc.py --input names.json --output result.json
 ```
 tianji/
 ├── SKILL.md                           # 技能入口（Agent 自动读取）
+├── requirements.txt                   # Python 依赖
 ├── scripts/
 │   ├── fortune_calc.py                # 命理测算引擎（八字/称骨/紫微/星座/合盘）
-│   └── name_wuge_calc.py              # 三才五格姓名测算引擎
+│   ├── name_wuge_calc.py              # 三才五格姓名测算引擎（含复姓自动识别）
+│   └── generate_html.py               # reading.json → 静态 HTML 报告渲染器
+├── schemas/
+│   └── reading_v8.schema.json         # 解读结果的 JSON Schema 契约
+├── prompts/
+│   ├── reading_json_prompt.md         # 叙事生成提示词
+│   └── synastry_addendum.md           # 合盘场景补充提示词
+├── examples/
+│   ├── example_personal.json          # 个人报告示例（CI 校验）
+│   └── example_synastry.json          # 合盘报告示例（CI 校验）
+├── tests/
+│   └── test_suite.py                  # 单元测试（CI 运行）
 ├── references/
-│   ├── kangxi_strokes.json            # 康熙字典笔画查找表（48700+ 字）
+│   ├── kangxi_strokes.json            # 康熙字典笔画查找表（48708 字）
+│   ├── city_coords.json               # 城市经纬度表（中国全境 + 全球主要城市）
 │   ├── weight-tables.md               # 称骨对照表（52 首歌诀）
+│   ├── use-cases.md                   # 使用案例
 │   └── output-template.md             # 报告输出模板
 ├── LICENSE
 └── README.md

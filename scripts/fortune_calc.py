@@ -39,6 +39,7 @@ import datetime
 # 公历→农历转换（zhdate库，pip install zhdate）
 try:
     from zhdate import ZhDate as _ZhDate
+    ZHDATE_AVAILABLE = True
     def solar_to_lunar(year, month, day):
         """公历转农历，返回 (lunar_month, lunar_day)。
         依赖 zhdate 库。若库不可用则返回 (1, 1) 并打印警告。
@@ -46,6 +47,7 @@ try:
         d = _ZhDate.from_datetime(datetime.datetime(year, month, day))
         return d.lunar_month, d.lunar_day
 except ImportError:
+    ZHDATE_AVAILABLE = False
     def solar_to_lunar(year, month, day):
         print("⚠️ 警告：zhdate库未安装，无法自动转换农历，称骨计算将不准确。请运行: pip install zhdate", file=sys.stderr)
         return 1, 1
@@ -1686,10 +1688,24 @@ def analyze_person(member):
     lunar = member.get("lunar", {})
     birth_city = member.get("birth_city", "")
 
+    # 数据质量告警：任何因依赖缺失而降级的结果都要写进输出 JSON，
+    # 避免调用方（Agent 或下游脚本）把降级值当成准确结果使用。
+    warnings = []
+
     # 公历转农历：若用户未提供 lunar 字段，自动转换
     if "month" in lunar and "day" in lunar:
         lunar_month = int(lunar["month"])
         lunar_day = int(lunar["day"])
+    elif not ZHDATE_AVAILABLE:
+        _solar_parts = solar_date.split("-")
+        _sy, _sm, _sd = int(_solar_parts[0]), int(_solar_parts[1]), int(_solar_parts[2])
+        lunar_month, lunar_day = solar_to_lunar(_sy, _sm, _sd)
+        warnings.append({
+            "code": "ZHDATE_MISSING",
+            "field": "chenggu",
+            "severity": "high",
+            "message": "未安装 zhdate，农历退化为正月初一，称骨结果不可用。请 pip install zhdate 后重算。",
+        })
     else:
         # 自动公历转农历（需 zhdate 库）
         _solar_parts = solar_date.split("-")
@@ -1792,9 +1808,22 @@ def analyze_person(member):
                 note_parts.append(f"（已将「{birth_city}」解析为「{asc_full['resolved_city']}」）")
             if asc_full.get("tz_is_estimated"):
                 note_parts.append("⚠️ 时区偏移为粗略估算，未校正夏令时/历史时区变更")
+                warnings.append({
+                    "code": "TIMEZONE_ESTIMATED",
+                    "field": "rising_sign",
+                    "severity": "medium",
+                    "message": "未安装 timezonefinder/pytz，时区为经度估算。境外出生地遇夏令时或历史时区变更时，"
+                               "上升星座可能偏差约 1 小时（约半个星座）。请 pip install timezonefinder pytz 后重算。",
+                })
             rising_note = " ".join(note_parts)
         else:
             rising_note = f"⚠️ {asc_full['error']}，上升星座无法计算。可直接输入纬度,经度（如 22.78,100.98）代替城市名"
+            warnings.append({
+                "code": "CITY_UNRESOLVED",
+                "field": "rising_sign",
+                "severity": "medium",
+                "message": f"无法解析出生城市「{birth_city}」，上升星座与真太阳时未计算。可改传「纬度,经度」。",
+            })
 
     # 三星组合解读
     astro_combo_reading = _zodiac_combo_reading(sun_sign, moon_sign, rising_sign)
@@ -1804,7 +1833,8 @@ def analyze_person(member):
 
     # 三才五格姓名测算
     wuge_result = None
-    surname_len = member.get("surname_len", 1)
+    # surname_len 省略时交由 name_wuge_calc 按复姓表自动识别（欧阳/司马/诸葛等）
+    surname_len = member.get("surname_len")
     try:
         import sys, os
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1824,6 +1854,8 @@ def analyze_person(member):
         "solar_date": solar_date,
         "birth_time": birth_time,
         "birth_city": birth_city,
+        # 降级告警列表（空列表 = 全部模块按完整精度计算）
+        "warnings": warnings,
         "bazi": bazi,
         "lunar_month": lunar_month,
         "lunar_day": lunar_day,
@@ -2087,6 +2119,8 @@ def main():
         if result["ziwei"]["格局识别"]:
             for pat, desc in result["ziwei"]["格局识别"]:
                 print(f"   格局：{pat}")
+        for w in result.get("warnings", []):
+            print(f"   ⚠️ [{w['code']}] {w['message']}", file=sys.stderr)
 
     synastry = None
     if len(results) >= 2:
@@ -2096,7 +2130,7 @@ def main():
     output = {
         "members": results,
         "synastry": synastry,
-        "version": "6.0",
+        "version": "8.0",
     }
 
     with open(args.output, "w", encoding="utf-8") as f:

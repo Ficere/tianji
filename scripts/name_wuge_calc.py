@@ -182,22 +182,69 @@ def num_to_yinyang(n):
 
 
 # ============================================================
+# 复姓识别
+# ============================================================
+
+# 《百家姓》及常见复姓表，用于 surname_len 自动推断。
+# 说明：仅在未显式指定 surname_len 且姓名长度 ≥ 3 时生效，
+# 避免把「张欧」这类单姓双名误判为复姓。
+COMPOUND_SURNAMES = {
+    "欧阳", "太史", "端木", "上官", "司马", "东方", "独孤", "南宫", "万俟",
+    "闻人", "夏侯", "诸葛", "尉迟", "公羊", "赫连", "澹台", "皇甫", "宗政",
+    "濮阳", "公冶", "太叔", "申屠", "公孙", "慕容", "仲孙", "钟离", "长孙",
+    "宇文", "司徒", "鲜于", "司空", "闾丘", "子车", "亓官", "司寇", "巫马",
+    "公西", "颛孙", "壤驷", "公良", "漆雕", "乐正", "宰父", "谷梁", "拓跋",
+    "夹谷", "轩辕", "令狐", "段干", "百里", "呼延", "东郭", "南门", "羊舌",
+    "微生", "公户", "公玉", "公仪", "梁丘", "公仲", "公上", "公门", "公山",
+    "公坚", "左丘", "公伯", "西门", "公祖", "第五", "公乘", "贯丘", "公皙",
+    "南荣", "东里", "东宫", "仲长", "子书", "子桑", "即墨", "达奚", "褚师",
+    # 繁体常见写法
+    "歐陽", "諸葛", "尉遲", "皇甫", "軒轅", "東方", "獨孤", "南宮", "聞人",
+    "夏侯", "赫連", "澹臺", "濮陽", "慕容", "鍾離", "長孫", "宇文", "司徒",
+    "鮮於", "司空", "閭丘", "亓官", "司寇", "巫馬", "顓孫", "壤駟", "樂正",
+    "穀梁", "拓跋", "夾谷", "令狐", "段幹", "百里", "呼延", "東郭", "南門",
+    "羊舌", "微生", "梁丘", "左丘", "西門", "第五",
+}
+
+
+def detect_surname_len(name):
+    """
+    根据复姓表自动推断姓氏字数。
+
+    仅当姓名长度 ≥ 3 且前两字命中复姓表时返回 2，否则返回 1。
+    长度 2 的姓名（如「欧阳」单独出现）不判为复姓，因为那样会导致名字部分为空。
+    """
+    chars = list(name.strip())
+    if len(chars) >= 3 and "".join(chars[:2]) in COMPOUND_SURNAMES:
+        return 2
+    return 1
+
+
+# ============================================================
 # 五格计算
 # ============================================================
 
-def calc_wuge(name, surname_len=1):
+def calc_wuge(name, surname_len=None):
     """
     计算三才五格。
 
     参数：
         name: 姓名字符串（如"张三"、"欧阳明华"）
-        surname_len: 姓氏字数（1=单姓，2=复姓）
+        surname_len: 姓氏字数（1=单姓，2=复姓）。
+                     传 None（默认）时按复姓表自动推断，复姓不再需要手工指定。
 
     返回：
         dict 包含五格数值、吉凶、三才等信息
     """
     chars = list(name)
     total_len = len(chars)
+
+    if surname_len is None:
+        surname_len = detect_surname_len(name)
+        surname_auto = True
+    else:
+        surname_auto = False
+
     surname_chars = chars[:surname_len]
     given_chars = chars[surname_len:]
     given_len = len(given_chars)
@@ -325,6 +372,8 @@ def calc_wuge(name, surname_len=1):
     return {
         "姓名": name,
         "姓名类型": name_type,
+        "姓氏字数": surname_len,
+        "姓氏字数自动识别": surname_auto,
         "笔画明细": stroke_details,
         "五格": wuge,
         "三才": {
@@ -579,7 +628,8 @@ def synastry_name_score(results):
 def main():
     parser = argparse.ArgumentParser(description="三才五格姓名测算")
     parser.add_argument("--name", help="单个姓名")
-    parser.add_argument("--surname-len", type=int, default=1, help="姓氏字数（默认1）")
+    parser.add_argument("--surname-len", type=int, default=None,
+                        help="姓氏字数（1=单姓，2=复姓）。省略时按复姓表自动识别")
     parser.add_argument("--input", help="批量输入JSON文件")
     parser.add_argument("--output", help="输出JSON文件")
     args = parser.parse_args()
@@ -590,7 +640,7 @@ def main():
         with open(args.input, "r", encoding="utf-8") as f:
             data = json.load(f)
         for entry in data["names"]:
-            r = calc_wuge(entry["name"], entry.get("surname_len", 1))
+            r = calc_wuge(entry["name"], entry.get("surname_len"))
             results.append(r)
             if "error" in r:
                 print(f"❌ {entry['name']}: {r['error']}")
