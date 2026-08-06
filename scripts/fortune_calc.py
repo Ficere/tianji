@@ -394,6 +394,32 @@ def days_since_jieling(year, month, day, hour=0, minute=0):
         return None
 
 
+def days_to_next_jieling(year, month, day, hour=0, minute=0):
+    """
+    自出生时刻到「下一个节令」的天数（浮点）。
+
+    与 days_since_jieling 配对：起运数顺行数未来节、逆行数过去节，
+    两者共用同一套节气时刻，精度一致。取不到返回 None。
+    """
+    try:
+        jieqi_dates = _get_month_jieqi_dates(year)
+        birth_val = (year, month, day, hour, minute)
+        nxt = None
+        for i in range(len(jieqi_dates) - 1):
+            a, b = jieqi_dates[i], jieqi_dates[i + 1]
+            if (a[0], a[1], a[2], a[3], a[4]) <= birth_val < (b[0], b[1], b[2], b[3], b[4]):
+                nxt = b
+                break
+        if nxt is None:
+            return None
+        jd_term = gregorian_to_jd(nxt[0], nxt[1], nxt[2], nxt[3], nxt[4])
+        jd_birth = gregorian_to_jd(year, month, day, hour, minute)
+        delta = jd_term - jd_birth
+        return round(delta, 3) if delta >= 0 else None
+    except Exception:
+        return None
+
+
 def calc_four_pillars(year, month, day, hour=0, minute=0):
     """
     一次性计算完整四柱八字。
@@ -1942,9 +1968,15 @@ def analyze_person(member):
         from deep_analysis import build_deep_analysis
         _sp = solar_date.split("-")
         _hh, _mm = (birth_time.split(":") + ["0"])[:2] if birth_time else ("0", "0")
-        _days = days_since_jieling(int(_sp[0]), int(_sp[1]), int(_sp[2]),
-                                   int(_hh), int(_mm))
-        result["deep"] = build_deep_analysis(result, _days)
+        _y, _mo, _d = int(_sp[0]), int(_sp[1]), int(_sp[2])
+        _days = days_since_jieling(_y, _mo, _d, int(_hh), int(_mm))
+        _to_next = days_to_next_jieling(_y, _mo, _d, int(_hh), int(_mm))
+        result["_birth_year"] = _y
+        result["deep"] = build_deep_analysis(
+            result, _days,
+            gender=member.get("gender") or gender,
+            since_jieling=_days, to_next_jieling=_to_next,
+            year_ganzhi_fn=lambda yy: calc_year_pillar(yy, 6, 1))
     except Exception as e:
         result["deep"] = None
         warnings.append({

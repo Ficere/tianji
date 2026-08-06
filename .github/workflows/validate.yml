@@ -251,6 +251,42 @@ jobs:
           print("✅ 深层分析不变量校验通过（120 组随机命造）")
           PY
 
+      - name: Dayun timeline cross-check against lunar-python
+        run: |
+          python - <<'EOF'
+          import sys, datetime
+          sys.path.insert(0, "scripts")
+          from fortune_calc import analyze_person
+          from lunar_python import Solar
+          cases = [("男",1990,5,20,14,30), ("女",1992,8,15,9,0),
+                   ("女",1978,12,25,3,20), ("男",2001,2,4,23,50),
+                   ("女",1965,3,11,18,5),  ("男",2010,11,7,6,40),
+                   ("男",1947,7,3,11,15),  ("女",2019,4,29,20,55)]
+          now = datetime.date.today().year
+          bad = 0
+          for g,y,mo,d,hh,mm in cases:
+              r = analyze_person({"name":"校验","gender":g,
+                  "solar_date":f"{y}-{mo:02d}-{d:02d}",
+                  "birth_time":f"{hh:02d}:{mm:02d}","birth_city":"北京"})
+              dy = r["deep"]["dayun"]
+              yun = (Solar.fromYmdHms(y,mo,d,hh,mm,0).getLunar()
+                     .getEightChar().getYun(1 if g=="男" else 0))
+              if dy["起运"]["起运岁"] != yun.getStartYear():
+                  bad += 1; print(f"❌ {y}-{mo}-{d} 起运岁 {dy['起运']['起运岁']} != {yun.getStartYear()}")
+              ref = next((x.getGanZhi() for x in yun.getDaYun()
+                          if x.getStartYear() <= now <= x.getEndYear() and x.getGanZhi()), None)
+              if ref and dy["当前大运"]["状态"] == "行运中" and dy["当前大运"]["干支"] != ref:
+                  bad += 1; print(f"❌ {y}-{mo}-{d} 当前大运 {dy['当前大运']['干支']} != {ref}")
+              texts = [dy["当前大运"]["解读"]] + [u["解读"] for u in dy["未来三年"]]
+              if len(dy["未来三年"]) != 3:
+                  bad += 1; print(f"❌ {y} 流年数不为 3")
+              if sum(len(t) for t in texts) > 600:
+                  bad += 1; print(f"❌ {y} 时间轴判语超长，违反输出纪律")
+          if bad:
+              sys.exit(1)
+          print("✅ 大运起运与当前运干支与 lunar-python 一致，时间轴范围与篇幅合规")
+          EOF
+
       - name: Smoke test generate_html.py
         run: |
           python scripts/generate_html.py --reading examples/example_personal.json --output /tmp/r1.html

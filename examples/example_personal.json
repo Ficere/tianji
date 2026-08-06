@@ -15,19 +15,22 @@
       "gender": "male",
       "mbti": "INTJ",
       "bazi": {
-        "pillars": { "year": "壬申", "month": "癸卯", "day": "庚午", "hour": "戊申" },
+        "pillars": { "year": "壬申", "month": "癸卯", "day": "庚寅", "hour": "甲申" },
         "day_master": "庚金",
         "strength": "弱",
         "wuxing_distribution": {
-          "scores": { "wood": 10, "fire": 30, "earth": 25, "metal": 20, "water": 15 },
-          "strong": ["火", "土"],
-          "weak": ["木", "水"],
-          "absent": []
+          "scores": { "wood": 30, "fire": 0, "earth": 10, "metal": 35, "water": 25 },
+          "strong": ["金", "木"],
+          "weak": ["土"],
+          "absent": ["火"]
         },
-        "ten_gods_summary": "庚金日主生于卯月，火土旺而日主偏弱，正印偏印护身，七杀制化有情。适合走印绶护身、借助贵人之路。",
-        "overall_analysis": "庚金日主卯月生，月支卯木为正官，官印相生格局成形。火土旺盛制金，日主偏弱，用神取土（印）护身，喜水润金。此命格走官职或专业技术路线为宜，不宜过早创业独扛。中年后印星发力，有晋升之机。",
-        "lucky_elements": ["土", "水"],
-        "unlucky_elements": ["火", "木"]
+        "ten_gods_summary": "庚金生于卯月失令，然年时两申为禄，比劫成群，是「失令而不失势」之局。月干癸水伤官泄秀，时干甲木偏财透而无根。",
+        "overall_analysis": "庚金卯月，官星当令而日主失令，幸年时双申通根，比劫为援，属身弱有势。病在木旺盗气、水泄金秀，用神取金比劫扶身，喜土生金。此命宜借同侪与团队之力，不宜孤身硬扛；财官虽显，须待自身根基稳固方能承接。",
+        "lucky_elements": ["土", "金"],
+        "unlucky_elements": ["火", "木", "水"],
+        "yongshen": "金（比劫）",
+        "yongshen_basis": "官旺木盛而日主失令，病在身轻不胜财官，故取比劫扶身为药，土印生金为佐。",
+        "current_luck": "现行丙午运（2018—2028），七杀在外、正官在内，压力与责任同时加身，而午火正是忌神所在——这十年真正耗人的不是能力不足，是位置踩在忌处；2028 戊申冲动日支，是三年中最明确的转折点。"
       },
       "bone_weight": {
         "total_liang": 4.35,

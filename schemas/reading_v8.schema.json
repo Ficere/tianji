@@ -90,7 +90,8 @@
             "unlucky_elements":  { "type": "array", "items": { "type": "string" }, "description": "忌神五行，来自 deep.yongshen.忌神，optional" },
             "yongshen":          { "type": "string", "maxLength": 40,  "description": "单一用神及其十神身份，如 '水（正印）'。取自 deep.yongshen，optional" },
             "yongshen_basis":    { "type": "string", "maxLength": 120, "description": "取用一句话依据（病在何处、何以为药）。禁止罗列计算过程，optional" },
-            "key_tension":       { "type": "string", "maxLength": 150, "description": "跨系统分歧中最具信息量的一条，须写成本人的内在张力而非系统矛盾。取自 deep.cross_validation，optional" }
+            "key_tension":       { "type": "string", "maxLength": 150, "description": "跨系统分歧中最具信息量的一条，须写成本人的内在张力而非系统矛盾。取自 deep.cross_validation，optional" },
+            "current_luck":      { "type": "string", "maxLength": 180, "description": "当前八字大运与未来三年焦点，须融入八字段落既有行文，不得另起章节、表格或年份列表。取自 deep.dayun，optional" }
           }
         },
 

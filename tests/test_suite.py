@@ -609,7 +609,7 @@ class TestDeepAnalysis(unittest.TestCase):
             self.assertEqual(
                 set(r["deep"].keys()),
                 {"canggan_shishen", "zhi_relations", "day_master",
-                 "yongshen", "cross_validation"})
+                 "yongshen", "cross_validation", "dayun"})
 
     def test_canggan_shishen_complete(self):
         for r in self.people:
@@ -797,6 +797,102 @@ class TestDeepAnalysis(unittest.TestCase):
             if missing and missing <= set(ys["忌神"]) and not (missing & name_all):
                 self.assertEqual(item["结论"], "一致",
                                  f"{r['name']} 缺的全是忌神且未被补入，不应判分歧")
+
+    def test_qiyun_matches_independent_library(self):
+        """起运岁数与当前大运干支须与 lunar-python 独立实现一致。"""
+        try:
+            from lunar_python import Solar
+        except ImportError:
+            self.skipTest("lunar-python 未安装")
+        import datetime
+        cases = [("男", 1990, 5, 20, 14, 30), ("女", 1992, 8, 15, 9, 0),
+                 ("女", 1978, 12, 25, 3, 20), ("男", 2001, 2, 4, 23, 50),
+                 ("女", 1965, 3, 11, 18, 5), ("男", 2010, 11, 7, 6, 40)]
+        now = datetime.date.today().year
+        for g, y, mo, d, hh, mm in cases:
+            r = analyze_person({"name": "测试", "gender": g,
+                                "solar_date": f"{y}-{mo:02d}-{d:02d}",
+                                "birth_time": f"{hh:02d}:{mm:02d}",
+                                "birth_city": "北京"})
+            dy = r["deep"]["dayun"]
+            self.assertTrue(dy["可用"], f"{y} 起运不可用")
+            yun = (Solar.fromYmdHms(y, mo, d, hh, mm, 0).getLunar()
+                   .getEightChar().getYun(1 if g == "男" else 0))
+            self.assertEqual(dy["起运"]["起运岁"], yun.getStartYear(),
+                             f"{y}-{mo}-{d} 起运岁数与 lunar-python 不符")
+            self.assertLessEqual(abs(dy["起运"]["起运月"] - yun.getStartMonth()), 1,
+                                 f"{y}-{mo}-{d} 起运月数偏差超过 1")
+            ref = next((x.getGanZhi() for x in yun.getDaYun()
+                        if x.getStartYear() <= now <= x.getEndYear()
+                        and x.getGanZhi()), None)
+            if ref and dy["当前大运"]["状态"] == "行运中":
+                self.assertEqual(dy["当前大运"]["干支"], ref,
+                                 f"{y}-{mo}-{d} 当前大运干支与 lunar-python 不符")
+
+    def test_qiyun_direction_rule(self):
+        """阳男阴女顺行、阴男阳女逆行，且顺行数下节、逆行数上节。"""
+        from deep_analysis import _qi_yun
+        for ygan, gender, want in (("甲", "男", True), ("甲", "女", False),
+                                   ("乙", "男", False), ("乙", "女", True)):
+            q = _qi_yun([ygan + "子", "丙寅", "戊辰", "庚申"], gender, 9.0, 12.0)
+            self.assertEqual(q["顺行"], want, f"{ygan}年{gender}命方向判错")
+            self.assertEqual(q["节令距离"], 12.0 if want else 9.0,
+                             "顺行须数下一节令、逆行须数上一节令")
+            self.assertEqual(q["起运岁"], int((12.0 if want else 9.0) // 3))
+
+    def test_timeline_scope_is_bounded(self):
+        """只输出当前大运 + 三个流年，防止日后被扩成八步全表。"""
+        for r in self.people:
+            dy = r["deep"].get("dayun")
+            if not dy or not dy.get("可用"):
+                continue
+            self.assertEqual(len(dy["未来三年"]), 3)
+            self.assertNotIn("大运列表", dy)
+            self.assertNotIn("全部大运", dy)
+            self.assertIsInstance(dy["当前大运"], dict)
+
+    def test_timeline_reading_not_repetitive(self):
+        """四个时间单元的判语不得整句复读——那是堆料不是深度。"""
+        for r in self.people:
+            dy = r["deep"].get("dayun")
+            if not dy or not dy.get("可用"):
+                continue
+            texts = [dy["当前大运"]["解读"]] + [u["解读"] for u in dy["未来三年"]]
+            clauses = [c for t in texts for c in t.rstrip("。").split("；")]
+            dup = [c for c in set(clauses)
+                   if clauses.count(c) > 1 and len(c) > 18]
+            self.assertFalse(dup, f"{r['name']} 出现整句复读：{dup}")
+            self.assertLess(sum(len(t) for t in texts), 600,
+                            f"{r['name']} 时间轴判语超长，违反输出纪律")
+
+    def test_unstarted_luck_is_declared_not_faked(self):
+        """未交运者须如实标注，不得假装已行某步大运。"""
+        from deep_analysis import build_dayun_timeline
+        person = {"bazi": ["庚午", "辛巳", "乙酉", "癸未"], "_birth_year": 2025}
+        ys = {"用神": "水", "喜神": ["水", "木"], "忌神": ["金", "土", "火"]}
+        dy = build_dayun_timeline(person, "男", 2026,
+                                  since_jieling=14.5, to_next_jieling=16.7,
+                                  yongshen=ys)
+        self.assertEqual(dy["当前大运"]["状态"], "未起运")
+        self.assertEqual(dy["当前大运"]["第几步"], 0)
+        self.assertEqual(dy["当前大运"]["干支"], "辛巳", "未起运应行月柱余气")
+
+    def test_timeline_absent_rather_than_wrong(self):
+        """缺性别或节令时刻时整块略去，不得给出错值。"""
+        from deep_analysis import build_deep_analysis
+        person = {"bazi": ["庚午", "辛巳", "乙酉", "癸未"], "_birth_year": 1990}
+        self.assertIsNone(build_deep_analysis(person, 14.5)["dayun"],
+                          "缺性别时不应产出大运")
+        d = build_deep_analysis(person, 14.5, gender="男",
+                                since_jieling=None, to_next_jieling=None)
+        self.assertIsNone(d["dayun"], "节令距离全缺时不应产出大运")
+
+    def test_he_zhong_dai_xing_not_collapsed(self):
+        """巳申一类既合又刑者须并列标注，只取其一会丢失事象。"""
+        from deep_analysis import _zhi_interactions
+        got = _zhi_interactions("申", [("时支", "巳")])
+        self.assertTrue(any("合" in x and "刑" in x for x in got),
+                        f"巳申应标为合中带刑，实得 {got}")
 
     def test_no_crash_across_wide_date_range(self):
         from fortune_calc import analyze_person

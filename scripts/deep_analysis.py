@@ -172,6 +172,8 @@ def _shishen_of_element(day_gan, element):
         return "官杀"
     return "未知"
 
+import datetime as _dt
+
 
 # ============================================================
 # 1. 地支藏干十神 + 人元司令
@@ -1075,7 +1077,9 @@ def cross_validate(person, yongshen, day_master, relations):
 # 统一入口
 # ============================================================
 
-def build_deep_analysis(person, days_into_month=None):
+def build_deep_analysis(person, days_into_month=None, gender=None,
+                        since_jieling=None, to_next_jieling=None,
+                        now_year=None, year_ganzhi_fn=None):
     """
     在 analyze_person 结果之上追加深层分析。
 
@@ -1091,10 +1095,334 @@ def build_deep_analysis(person, days_into_month=None):
     yongshen = determine_yongshen(bazi, canggan_detail, day_master, relations)
     cross = cross_validate(person, yongshen, day_master, relations)
 
+    # 大运流年：需要性别与节令距离，缺任一项则整块略去而非给出错值。
+    dayun = None
+    if gender and (since_jieling is not None or to_next_jieling is not None):
+        dayun = build_dayun_timeline(
+            person, gender,
+            now_year or _dt.date.today().year,
+            since_jieling=since_jieling, to_next_jieling=to_next_jieling,
+            yongshen=yongshen, year_ganzhi_fn=year_ganzhi_fn)
+
     return {
         "canggan_shishen": canggan_detail,
         "zhi_relations": relations,
         "day_master": day_master,
         "yongshen": yongshen,
         "cross_validation": cross,
+        "dayun": dayun,
+    }
+
+
+# ============================================================
+# 6. 大运流年时间轴（只输出当前大运 + 未来三年）
+# ============================================================
+#
+# 刻意不铺全表：八步大运八十年的干支表是查表信息，不是解读。
+# 与命主此刻真正相关的只有「现在这十年」和「接下来三年」，
+# 其余全部丢弃，以此换取对这四个时间单元的深度分析。
+
+JIA_ZI = [g + z for g, z in zip(
+    [TIAN_GAN[i % 10] for i in range(60)],
+    [DI_ZHI[i % 12] for i in range(60)])]
+
+
+def _ganzhi_offset(gz, n):
+    """六十甲子中相对偏移 n 位（可负）。"""
+    return JIA_ZI[(JIA_ZI.index(gz) + n) % 60]
+
+
+def _qi_yun(bazi, gender, since_jieling, to_next_jieling):
+    """
+    起运推算。
+
+    阳年男 / 阴年女顺行，数至下一节令；阴年男 / 阳年女逆行，数至上一节令。
+    折算古法：三日折一年，一日折四月，一时辰（两小时）折十日。
+    """
+    forward = (YIN_YANG_GAN[bazi[0][0]] == "阳") == (gender == "男")
+    span = to_next_jieling if forward else since_jieling
+    if span is None:
+        return None
+    years, rem = divmod(span, 3.0)
+    months, rem_d = divmod(rem * 4.0, 1.0)      # 每余 1 日 = 4 个月
+    days = rem_d * 30.0                          # 不足一月者折日
+    return {
+        "顺逆": "顺行" if forward else "逆行",
+        "顺行": forward,
+        "节令距离": round(span, 3),
+        "起运岁": int(years),
+        "起运月": int(months),
+        "起运日": int(round(days)),
+        "起运年龄": round(years + months / 12.0 + days / 365.0, 2),
+        "折算说明": (
+            f"{'阳' if YIN_YANG_GAN[bazi[0][0]] == '阳' else '阴'}年"
+            f"{gender}命{'顺' if forward else '逆'}行，"
+            f"生时距{'下' if forward else '上'}一节令 {span:.2f} 日，"
+            f"三日折一年，得 {int(years)} 岁 {int(months)} 个月起运"),
+    }
+
+
+def _pillar_shishen(day_gan, gz):
+    """一柱干支相对日主的十神画像（天干 + 地支本气）。"""
+    return {
+        "干": gz[0],
+        "支": gz[1],
+        "天干十神": get_shishen(day_gan, gz[0]),
+        "地支本气": CANG_GAN[gz[1]][0],
+        "地支十神": get_shishen(day_gan, CANG_GAN[gz[1]][0]),
+        "干五行": WU_XING_GAN[gz[0]],
+        "支五行": WU_XING_GAN[CANG_GAN[gz[1]][0]],
+    }
+
+
+def _xi_ji_score(pic, yongshen):
+    """
+    喜忌倾向量化。天干主外显事象计 0.4，地支主根基实质计 0.6。
+    返回 (分值 -1..1, 文字判语)。
+    """
+    xi, ji = set(yongshen["喜神"]), set(yongshen["忌神"])
+    score = 0.0
+    for wx, w in ((pic["干五行"], 0.4), (pic["支五行"], 0.6)):
+        if wx in xi:
+            score += w
+        elif wx in ji:
+            score -= w
+    score = round(score, 2)
+    if score >= 0.6:
+        verdict = "顺境"
+    elif score >= 0.2:
+        verdict = "偏顺"
+    elif score > -0.2:
+        verdict = "参半"
+    elif score > -0.6:
+        verdict = "偏逆"
+    else:
+        verdict = "逆境"
+    return score, verdict
+
+
+def _zhi_interactions(zhi, targets):
+    """
+    某支与一组（标签, 支）的刑冲合会关系，复用原局同一套判定。
+
+    巳申、寅巳一类既合又刑者不能只取其一——「合中带刑」与单纯的合
+    是完全不同的事象，故合冲类与刑害破类分别判定后并列输出。
+    """
+    out = []
+    for label, tz in targets:
+        if not tz:
+            continue
+        pair = frozenset((zhi, tz))
+        if zhi == tz:
+            if zhi in ZI_XING:
+                out.append(f"与{label}{tz}自刑")
+            continue
+        main = None
+        if pair in LIU_CHONG:
+            main = f"冲{label}{tz}"
+        elif pair in LIU_HE:
+            main = f"合{label}{tz}"
+        elif any(pair <= set(g) and _sanhe_half(zhi, tz, g) for g in SAN_HE_GROUPS):
+            main = f"与{label}{tz}半合"
+        sub = None
+        if pair in XIANG_XING:
+            sub = f"刑{label}{tz}"
+        elif pair in XIANG_HAI:
+            sub = f"害{label}{tz}"
+        elif pair in XIANG_PO:
+            sub = f"破{label}{tz}"
+        if main and sub:
+            out.append(f"{main}（合中带刑，{sub[0]}）" if "合" in main
+                       else f"{main}兼{sub[0]}")
+        elif main:
+            out.append(main)
+        elif sub:
+            out.append(sub)
+    return out
+
+
+def _sanhe_half(a, b, group):
+    """三合局中含旺支（中神）者方为半合，两旁支相遇不作合论。"""
+    return group[1] in (a, b)
+
+
+# 十神在「运」这个层面上的事象侧重，与本命静态含义不同：
+# 本命看禀赋，行运看这十年被什么力量推动。
+SHISHEN_YUN_THEME = {
+    "比肩": "同侪、合伙与自立",   "劫财": "竞争、破财与人情消耗",
+    "食神": "输出、专业深耕与享受", "伤官": "才华外露、越界与旧秩序松动",
+    "正财": "稳定收入与务实经营", "偏财": "机会财、外缘与流动性",
+    "正官": "职位、规范与责任加身", "七杀": "压力、竞争位与被迫成长",
+    "正印": "扶持、学习与身份认证", "偏印": "偏门技艺、独处与内向消化",
+}
+
+
+# 十神所属大类，用于判断干支两股力量是否真的相左。
+# 同类者不必强说「内外不一」——那是句填充话，不是观察。
+SHISHEN_CAMP = {
+    "比肩": "自我", "劫财": "自我", "食神": "输出", "伤官": "输出",
+    "正财": "取用", "偏财": "取用", "正官": "受制", "七杀": "受制",
+    "正印": "受养", "偏印": "受养",
+}
+CAMP_OPPOSED = {frozenset(("受养", "取用")), frozenset(("输出", "受制")),
+                frozenset(("自我", "受制")), frozenset(("受养", "输出"))}
+
+DONG_VERB = {"冲": "正面撞开", "刑": "内里磨损", "害": "暗处折损", "破": "小幅剥落"}
+
+
+def _unit_reading(pic, yongshen, role, seen):
+    """
+    把十神 / 喜忌 / 刑冲合成一句有因果链的判语。
+
+    不写「吉」「凶」——那是结论不是解读；写清楚**什么力量在推动、
+    这股力量于本命是助是耗、从哪里落地**。
+
+    `seen` 跨单元累积已用过的论断：同一句忌神判语在四个时间单元里
+    原样复读四遍，是堆料不是深度，故第二次起只留短提示。
+    """
+    gan_ss, zhi_ss = pic["天干十神"], pic["地支十神"]
+    theme_g = SHISHEN_YUN_THEME.get(gan_ss, "")
+    theme_z = SHISHEN_YUN_THEME.get(zhi_ss, "")
+    yong = yongshen["用神"] if yongshen else None
+    ji = set(yongshen["忌神"]) if yongshen else set()
+    parts = []
+
+    camps = frozenset((SHISHEN_CAMP.get(gan_ss, ""), SHISHEN_CAMP.get(zhi_ss, "")))
+    if gan_ss == zhi_ss:
+        parts.append(f"{role}{pic['干支']}干支同气，{theme_g}一事上下贯通，力度集中而无退路")
+    elif camps in CAMP_OPPOSED:
+        parts.append(f"{role}{pic['干支']}天干{gan_ss}主{theme_g}，地支{zhi_ss}主{theme_z}，"
+                     f"两股力量方向相左，外面在做的事与内里被消耗的事并不是同一件")
+    else:
+        parts.append(f"{role}{pic['干支']}以{gan_ss}{theme_g}为面，{zhi_ss}{theme_z}为里")
+
+    # —— 喜忌落点，重复者只留短提示 ——
+    if yong and pic["支五行"] == yong:
+        k = "支落用神"
+        parts.append(f"地支正落用神{yong}，是本命最缺的那口气，借力最省"
+                     if k not in seen else f"地支同落用神{yong}")
+        seen.add(k)
+    elif yong and pic["干五行"] == yong:
+        k = "干透用神"
+        parts.append(f"天干透用神{yong}，助力可见却无根，须外求方能落地"
+                     if k not in seen else f"用神{yong}仍只透于天干")
+        seen.add(k)
+    elif pic["支五行"] in ji:
+        k = f"支坐忌{pic['支五行']}"
+        parts.append(f"地支坐忌神{pic['支五行']}，根基处即是消耗处，"
+                     f"顺逆不取决于用力多寡，而取决于是否踩在忌神上"
+                     if "支坐忌" not in {x[:3] for x in seen}
+                     else f"地支复坐忌神{pic['支五行']}，同一处消耗延续")
+        seen.add(k)
+
+    # —— 引动原局，措辞须与实际关系相符 ——
+    if pic["与原局"]:
+        dong = [x for x in pic["与原局"] if x[0] in DONG_VERB or "自刑" in x]
+        he = [x for x in pic["与原局"] if x not in dong]
+        if dong:
+            v = ("自我磨耗于" if "自刑" in dong[0]
+                 else DONG_VERB.get(dong[0][0], "扰动"))
+            k = "引动"
+            parts.append(f"引动原局：{'、'.join(dong)}，{v}所临之柱，此期变动多由此起"
+                         if k not in seen else f"再度{'、'.join(dong)}")
+            seen.add(k)
+        if he and not dong:
+            parts.append(f"{'、'.join(he)}，合则牵绊，事缓而黏")
+    return "；".join(parts) + "。"
+
+
+def build_dayun_timeline(person, gender, now_year, now_month=6,
+                         since_jieling=None, to_next_jieling=None,
+                         yongshen=None, year_ganzhi_fn=None):
+    """
+    大运流年时间轴：**只输出当前所行大运与未来三个流年**。
+
+    有意不铺八步大运全表——那是查表信息不是解读。
+    篇幅省下来用于四个时间单元各自的十神、喜忌与刑冲合会分析。
+    """
+    bazi = person["bazi"]
+    day_gan = bazi[2][0]
+    birth_year = person.get("_birth_year") or now_year
+
+    qi = _qi_yun(bazi, gender, since_jieling, to_next_jieling)
+    if qi is None:
+        return {"可用": False, "原因": "节令时刻不可得，起运数无法推算"}
+
+    step = 1 if qi["顺行"] else -1
+    age = now_year - birth_year          # 周岁近似，误差不超过一年
+    idx = int((age - qi["起运年龄"]) // 10)
+
+    targets = [(PILLAR_NAMES[i] + "支", p[1]) for i, p in enumerate(bazi)]
+
+    seen = set()
+
+    def unit(gz, role="此运"):
+        pic = _pillar_shishen(day_gan, gz)
+        sc, verdict = (_xi_ji_score(pic, yongshen) if yongshen else (0.0, "未判"))
+        pic.update({"干支": gz, "喜忌分": sc, "喜忌": verdict,
+                    "与原局": _zhi_interactions(gz[1], targets)})
+        pic["解读"] = _unit_reading(pic, yongshen, role, seen)
+        for k in ("干", "支"):          # 与「干支」重复，去掉以免叙事层照抄字段
+            pic.pop(k, None)
+        pic["_zhi"] = gz[1]
+        return pic
+
+    if idx < 0:
+        # 尚未交运者行的是月柱余气，不能假装已在某步大运上。
+        dayun = unit(bazi[1], "月柱余气")
+        dayun.update({
+            "状态": "未起运",
+            "第几步": 0,
+            "说明": f"{qi['起运岁']}岁{qi['起运月']}个月方交首运，"
+                    f"现行月柱 {bazi[1]} 之余气，本命格局尚未展开，"
+                    f"此期表现多随家庭环境而非自身命局",
+        })
+    else:
+        gz = _ganzhi_offset(bazi[1], step * (idx + 1))
+        start_age = round(qi["起运年龄"] + idx * 10, 2)
+        dayun = unit(gz, "本运")
+        dayun.update({
+            "状态": "行运中",
+            "第几步": idx + 1,
+            "起始年龄": start_age,
+            "结束年龄": round(start_age + 10, 2),
+            "起止公历": f"{birth_year + int(start_age)}—{birth_year + int(start_age) + 10}",
+            "已行年数": round(age - start_age, 1),
+        })
+
+    liunian = []
+    for y in range(now_year, now_year + 3):
+        gz = year_ganzhi_fn(y) if year_ganzhi_fn else _ganzhi_offset(bazi[0], y - birth_year)
+        u = unit(gz, f"{y}年")
+        u["年份"] = y
+        u["虚岁"] = y - birth_year + 1
+        u["与大运"] = _zhi_interactions(gz[1], [("大运支", dayun["_zhi"])])
+        liunian.append(u)
+
+    # 三年中挑出最值得说的一年：优先取与大运或原局有冲刑者（变动明确），
+    # 其次取喜忌绝对值最大者（力度明确）。平铺三年等于没有重点。
+    def _salience(u):
+        hits = u["与原局"] + u["与大运"]
+        chong = sum(1 for x in hits if x[0] in "冲刑")
+        return (chong, abs(u["喜忌分"]))
+    key_year = max(liunian, key=_salience) if liunian else None
+    focus = None
+    if key_year:
+        why = ([x for x in key_year["与原局"] + key_year["与大运"] if x[0] in "冲刑"]
+               or [f"{key_year['喜忌']}（{key_year['喜忌分']:+}）"])
+        focus = (f"{key_year['年份']}年（{key_year['干支']}）是三年中变量最大的一年："
+                 f"{'、'.join(why)}。此年的关键不在结果好坏，"
+                 f"而在它会把{dayun['干支']}这十年的主题提前逼到台面上")
+
+    for u in liunian:
+        u.pop("_zhi", None)
+    dayun.pop("_zhi", None)
+
+    return {
+        "可用": True,
+        "起运": qi,
+        "当前大运": dayun,
+        "未来三年": liunian,
+        "三年焦点": focus,
+        "范围说明": "仅取当前大运与未来三个流年；八步大运全表属查表信息，故不输出",
     }
