@@ -16,6 +16,8 @@
     命理各家分歧极大，宁可显式披露分歧，也不输出伪确定性结论。
 """
 
+from collections import Counter
+
 # ============================================================
 # 基础常量
 # ============================================================
@@ -904,6 +906,9 @@ def cross_validate(person, yongshen, day_master, relations):
                     f"这种落差本身往往是其消耗感的来源")
 
     # --- 汇总 ---
+    # 统计用 Counter 泛化，避免新增结论类型（如「提示」）被静默漏计；
+    # 但一致度只在四种「一致性判定」上计算——「提示」是补充说明，不参与分母。
+    tally = Counter(c["结论"] for c in checks)
     n_cons = sum(1 for c in checks if c["结论"] == "一致")
     n_part = sum(1 for c in checks if c["结论"] == "部分一致")
     n_div = sum(1 for c in checks if c["结论"] == "分歧")
@@ -925,8 +930,7 @@ def cross_validate(person, yongshen, day_master, relations):
 
     return {
         "一致度": consistency,
-        "统计": {"一致": n_cons, "部分一致": n_part, "分歧": n_div,
-                 "不确定": sum(1 for c in checks if c["结论"] == "不确定")},
+        "统计": dict(tally),
         "检测项": checks,
         "分歧焦点": [{"维度": d["维度"], "说明": d["说明"]} for d in divergences],
         "叙事指引": hint,

@@ -699,7 +699,7 @@ class TestDeepAnalysis(unittest.TestCase):
             cv = r["deep"]["cross_validation"]
             self.assertEqual(sum(cv["统计"].values()), len(cv["检测项"]))
             for c in cv["检测项"]:
-                self.assertIn(c["结论"], ("一致", "部分一致", "分歧", "不确定"))
+                self.assertIn(c["结论"], ("一致", "部分一致", "分歧", "不确定", "提示"))
                 self.assertTrue(c["说明"])
             self.assertTrue(cv["叙事指引"])
 
