@@ -23,6 +23,14 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 from fortune_calc import (
+    _get_ziwei_zhi_idx,
+    _place_ziwei_system,
+    _place_tianfu_system,
+    _place_auxiliary_stars,
+    _build_wuxing_ju_map,
+    get_shichen,
+    DI_ZHI,
+    TIAN_GAN,
     calc_four_pillars,
     get_zodiac_precise,
     get_moon_sign,
@@ -229,67 +237,157 @@ class TestMoonSign(unittest.TestCase):
 
 class TestZiweiStars(unittest.TestCase):
     """
-    紫微斗数14主星安星准确性测试。
-    采用北派算法（标准《紫微斗数全书》流派）。
-    期望值由算法计算输出，并与 PyEphem/论命网 交叉验证命宫干支。
+    紫微斗数安星准确性测试。
 
-    五行局对照：
-    - 壬申年 -> 金四局（命宫：戊申宫）
-    - 甲子年 -> 火六局（命宫：甲戌宫）
-    - 庚午年 -> 火六局（命宫：戊子宫）
-    - 丙寅年 -> 土五局（命宫：辛丑宫）
-    - 戊辰年 -> 木三局（五行局由命宫天干地支查纳音决定）
+    ⚠️ 历史教训：本类此前的期望值是「由算法计算输出」自证得来的，
+    因此长期掩盖了安星算法的根本性错误（起紫微星缺「奇减偶加」、
+    天府公式写成 (14-紫微)、紫微系偏移方向取反、五行局纳音表 60 组错 16 组、
+    文昌文曲误用年支、左辅右弼起月错、铃星起宫表错）。
+
+    现改为**对照外部权威资料**，禁止再用本仓库算法自身生成期望值：
+      - 起紫微星表：紫微斗数学堂（ziweicn.com）15 日 × 三局
+      - 起紫微帝曜检索表：中华科技大学紫微命盘讲义 9 日 × 五局（独立第二来源）
+      - 安星诀例题：星侨中国五术网 / 紫微斗数学堂共 5 题
+      - 安天府星诀、紫微系与天府系安星诀、安文昌文曲/左辅右弼/火铃诀
+      - 六十甲子纳音（五行局）
     """
 
-    CASES = [
-        # (lunar_month, lunar_day, hour, gender, year_gan, year_zhi,
-        #  expected_ziwei_zhi, expected_tianfu_zhi, wuxing_ju, source)
-        #
-        # 注：五行局由【命宫天干+命宫地支】（纳音）决定，非年柱，测试值均经算法验证。
-        #
-        # 壬申年 农历1月 午时 -> 命宫=戊申宫 -> (戊,申)=金四局
-        (1, 1,  12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        (1, 2,  12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        (1, 3,  12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        (1, 7,  12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        (1, 10, 12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        (1, 15, 12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        # 戊辰年 农历2月 午时 -> 命宫=辛酉宫 -> (辛,酉)=木三局
-        (2, 1,  12, "男", "戊", "辰", "子", "寅", "木三局", "北派算法"),
-        (2, 2,  12, "男", "戊", "辰", "酉", "亥", "木三局", "北派算法"),
-        (2, 3,  12, "男", "戊", "辰", "子", "寅", "木三局", "北派算法"),
-        (2, 6,  12, "男", "戊", "辰", "子", "寅", "木三局", "北派算法"),
-        (2, 10, 12, "男", "戊", "辰", "子", "寅", "木三局", "北派算法"),
-        # 甲子年 农历3月 午时 -> 命宫=甲戌宫 -> (甲,戌)=火六局
-        (3, 1,  12, "男", "甲", "子", "子", "寅", "火六局", "北派算法"),
-        (3, 4,  12, "男", "甲", "子", "亥", "丑", "火六局", "北派算法"),
-        (3, 8,  12, "男", "甲", "子", "子", "寅", "火六局", "北派算法"),
-        (3, 12, 12, "男", "甲", "子", "亥", "丑", "火六局", "北派算法"),
-        # 庚午年 农历4月 卯时 -> 命宫=己丑宫 -> (己,丑)=火六局
-        (4, 26,  8, "男", "庚", "午", "子", "寅", "火六局", "北派算法"),
-        # 庚午年 农历5月 午时 -> 命宫=戊子宫 -> (戊,子)=火六局
-        (5, 1,  12, "男", "庚", "午", "子", "寅", "火六局", "北派算法"),
-        (5, 5,  12, "男", "庚", "午", "子", "寅", "火六局", "北派算法"),
-        (5, 10, 12, "男", "庚", "午", "子", "寅", "火六局", "北派算法"),
-        # 丙寅年 农历6月 午时 -> 命宫=辛丑宫 -> (辛,丑)=土五局
-        (6, 1,  12, "男", "丙", "寅", "子", "寅", "土五局", "北派算法"),
-        (6, 6,  12, "男", "丙", "寅", "子", "寅", "土五局", "北派算法"),
-        (6, 12, 12, "男", "丙", "寅", "子", "寅", "土五局", "北派算法"),
+    # 起紫微星表（紫微斗数学堂），生日 1..15
+    ZIWEI_TABLE_15 = {
+        2: "丑寅寅卯卯辰辰巳巳午午未未申申",
+        3: "辰丑寅巳寅卯午卯辰未辰巳申巳午",
+        6: "酉午亥辰丑寅戌未子巳寅卯亥申丑",
+    }
+    # 起紫微帝曜检索表（中华科技大学讲义），生日 1..9，含金四局/土五局
+    ZIWEI_TABLE_9 = {
+        2: "丑寅寅卯卯辰辰巳巳",
+        3: "辰丑寅巳寅卯午卯辰",
+        4: "亥辰丑寅子巳寅卯丑",
+        5: "午亥辰丑寅未子巳寅",
+        6: "酉午亥辰丑寅戌未子",
+    }
+    # 安星诀例题：(生日, 局数, 紫微所在地支, 出处)
+    ZIWEI_EXAMPLES = [
+        (27, 3, "戌", "星侨中国五术网"),
+        (13, 6, "亥", "星侨中国五术网"),
+        (6,  5, "未", "星侨中国五术网"),
+        (22, 3, "亥", "紫微斗数学堂"),
+        (27, 4, "未", "紫微斗数学堂"),
+    ]
+    # 六十甲子纳音（每两组一音）
+    NA_YIN_60 = [
+        "海中金", "炉中火", "大林木", "路旁土", "剑锋金", "山头火",
+        "涧下水", "城头土", "白蜡金", "杨柳木", "泉中水", "屋上土",
+        "霹雳火", "松柏木", "长流水", "沙中金", "山下火", "平地木",
+        "壁上土", "金箔金", "覆灯火", "天河水", "大驿土", "钗钏金",
+        "桑柘木", "大溪水", "沙中土", "天上火", "石榴木", "大海水",
     ]
 
-    def test_ziwei_star_positions(self):
-        """验证紫微星与天府星落宫（五行局）"""
-        for case in self.CASES:
-            lm, ld, h, gender, yg, yz = case[0], case[1], case[2], case[3], case[4], case[5]
-            expected_ju = case[8]
-            source = case[9]
-            with self.subTest(lunar=f"{lm}月{ld}日", year_gz=f"{yg}{yz}"):
-                result = calc_ziwei_full(yg, yz, lm, ld, float(h), gender)
-                self.assertEqual(
-                    result["五行局"], expected_ju,
-                    f"农历{lm}月{ld}日 年干{yg}{yz} "
-                    f"计算={result['五行局']} 期望={expected_ju} 来源={source}"
-                )
+    def test_ziwei_position_matches_authoritative_table_15(self):
+        """起紫微星：对照 ziweicn 安星表（1-15 日 × 水二/木三/火六局）"""
+        for ju, row in self.ZIWEI_TABLE_15.items():
+            got = "".join(DI_ZHI[_get_ziwei_zhi_idx(d, ju)] for d in range(1, 16))
+            self.assertEqual(got, row, f"{ju}局 1-15 日安紫微不符权威表")
+
+    def test_ziwei_position_matches_authoritative_table_9(self):
+        """起紫微星：对照独立第二来源检索表（1-9 日 × 全部五局）"""
+        for ju, row in self.ZIWEI_TABLE_9.items():
+            got = "".join(DI_ZHI[_get_ziwei_zhi_idx(d, ju)] for d in range(1, 10))
+            self.assertEqual(got, row, f"{ju}局 1-9 日安紫微不符检索表")
+
+    def test_ziwei_classic_examples(self):
+        """起紫微星：典籍例题（覆盖整除、奇数补数、偶数补数三种分支）"""
+        for day, ju, expected, src in self.ZIWEI_EXAMPLES:
+            got = DI_ZHI[_get_ziwei_zhi_idx(day, ju)]
+            self.assertEqual(got, expected, f"{day}日{ju}局应在{expected}宫（{src}）")
+
+    def test_tianfu_is_symmetric_about_yin_shen_axis(self):
+        """安天府星诀：紫微天府以寅—申轴对称，唯寅申同宫"""
+        for zi, expected in [("子", "辰"), ("丑", "卯"), ("寅", "寅"), ("卯", "丑"),
+                             ("辰", "子"), ("巳", "亥"), ("午", "戌"), ("未", "酉"),
+                             ("申", "申"), ("酉", "未"), ("戌", "午"), ("亥", "巳")]:
+            z = DI_ZHI.index(zi)
+            got = DI_ZHI[_place_tianfu_system(z)["天府"]]
+            self.assertEqual(got, expected, f"紫微在{zi}时天府应在{expected}")
+            # 紫微 + 天府 恒 ≡ 4 (mod 12)
+            self.assertEqual((z + _place_tianfu_system(z)["天府"]) % 12, 4)
+
+    def test_ziwei_system_offsets_are_retrograde(self):
+        """「紫微天机逆行旁，隔一阳武天同当，又隔二位遇廉贞」——典籍例：紫微在寅"""
+        stars = _place_ziwei_system(DI_ZHI.index("寅"))
+        for star, expected in [("紫微", "寅"), ("天机", "丑"), ("太阳", "亥"),
+                               ("武曲", "戌"), ("天同", "酉"), ("廉贞", "午")]:
+            self.assertEqual(DI_ZHI[stars[star]], expected,
+                             f"紫微在寅时{star}应在{expected}")
+
+    def test_tianfu_system_offsets_are_prograde(self):
+        """「天府太阴与贪狼，巨门天相及天梁，七杀空三破军位」"""
+        base = DI_ZHI.index("寅")
+        stars = _place_tianfu_system(base)  # 紫微在寅 → 天府亦在寅
+        for star, off in [("天府", 0), ("太阴", 1), ("贪狼", 2), ("巨门", 3),
+                          ("天相", 4), ("天梁", 5), ("七杀", 6), ("破军", 10)]:
+            self.assertEqual(stars[star], (base + off) % 12, f"{star}偏移错误")
+
+    def test_wuxing_ju_matches_na_yin(self):
+        """五行局：60 组命宫干支须与六十甲子纳音五行完全一致"""
+        ju_of = {"金": "金四局", "木": "木三局", "水": "水二局",
+                 "火": "火六局", "土": "土五局"}
+        table = _build_wuxing_ju_map()
+        self.assertEqual(len(table), 60)
+        for i in range(60):
+            gan, zhi = TIAN_GAN[i % 10], DI_ZHI[i % 12]
+            na_yin = self.NA_YIN_60[i // 2]
+            expected = ju_of[na_yin[-1]]
+            self.assertEqual(table[(gan, zhi)][0], expected,
+                             f"{gan}{zhi}（{na_yin}）应为{expected}")
+
+    def test_wenchang_wenqu_use_hour_branch(self):
+        """「文昌戌上起子时逆至生时，文曲辰宫起子时顺到生时」——以时支而非年支起"""
+        for hour in range(0, 24, 2):
+            hi = get_shichen(hour)
+            aux = _place_auxiliary_stars("甲", "子", 1, 1, hour, "男")
+            self.assertEqual(aux["文昌"], (10 - hi) % 12, f"{hour}时文昌错")
+            self.assertEqual(aux["文曲"], (4 + hi) % 12, f"{hour}时文曲错")
+        # 换年支不应改变文昌文曲（证明未误用年支）
+        a1 = _place_auxiliary_stars("甲", "子", 1, 1, 12, "男")
+        a2 = _place_auxiliary_stars("甲", "午", 1, 1, 12, "男")
+        self.assertEqual((a1["文昌"], a1["文曲"]), (a2["文昌"], a2["文曲"]))
+
+    def test_zuofu_youbi_start_from_first_lunar_month(self):
+        """「左辅正月起辰宫顺逢生月，右弼正月宫寻戌逆至生月」"""
+        for m in range(1, 13):
+            aux = _place_auxiliary_stars("甲", "子", m, 1, 12, "男")
+            self.assertEqual(aux["左辅"], (4 + m - 1) % 12, f"{m}月左辅错")
+            self.assertEqual(aux["右弼"], (10 - (m - 1)) % 12, f"{m}月右弼错")
+        # 正月左辅在辰、右弼在戌；二者恒对宫
+        for m in range(1, 13):
+            aux = _place_auxiliary_stars("甲", "子", m, 1, 12, "男")
+            self.assertEqual((aux["左辅"] + aux["右弼"]) % 12, 2)
+
+    def test_huoxing_lingxing_start_palaces(self):
+        """「申子辰人寅戌扬，寅午戌人丑卯方，巳酉丑人卯戌位，亥卯未人酉戌房」"""
+        huo = {"申": 2, "子": 2, "辰": 2, "寅": 1, "午": 1, "戌": 1,
+               "巳": 3, "酉": 3, "丑": 3, "亥": 9, "卯": 9, "未": 9}
+        ling = {"申": 10, "子": 10, "辰": 10, "寅": 3, "午": 3, "戌": 3,
+                "巳": 10, "酉": 10, "丑": 10, "亥": 10, "卯": 10, "未": 10}
+        for zhi in DI_ZHI:
+            for hour in range(0, 24, 4):
+                hi = get_shichen(hour)
+                aux = _place_auxiliary_stars("甲", zhi, 1, 1, hour, "男")
+                self.assertEqual(aux["火星"], (huo[zhi] + hi) % 12, f"{zhi}年{hour}时火星错")
+                self.assertEqual(aux["铃星"], (ling[zhi] + hi) % 12, f"{zhi}年{hour}时铃星错")
+
+    def test_fourteen_main_stars_occupy_distinct_pattern(self):
+        """结构不变量：14 主星恒分布于 12 宫，且紫府两系各自连续"""
+        for ju in (2, 3, 4, 5, 6):
+            for day in range(1, 31):
+                z = _get_ziwei_zhi_idx(day, ju)
+                zs, ts = _place_ziwei_system(z), _place_tianfu_system(z)
+                self.assertEqual(len(zs) + len(ts), 14)
+                # 紫微系六星互不重宫
+                self.assertEqual(len(set(zs.values())), 6)
+                # 天府系八星占七宫（七杀与破军间空三，天府系内无重复偏移）
+                self.assertEqual(len(set(ts.values())), 8)
 
     def test_main_stars_exist(self):
         """验证14颗主星都有安星结果"""
