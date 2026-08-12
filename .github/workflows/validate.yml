@@ -4,7 +4,8 @@ on:
   push:
     branches: [master, main]
   pull_request:
-    branches: [master, main]
+    # 同时覆盖堆叠 PR（feat/** → fix/**），否则中间分支的 PR 不跑 CI
+    branches: [master, main, 'fix/**', 'feat/**']
 
 jobs:
   validate:
@@ -28,6 +29,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyyaml jsonschema
+          # 测试期专用：lunar-python 是与本仓库完全独立的第三方排盘实现，
+          # 仅用于交叉验证四柱与起运，不进 requirements.txt（非运行时依赖）。
+          pip install lunar-python
 
       - name: Assert runtime dependencies are importable
         # 防止 CI 在依赖缺失的降级路径上「假绿灯」通过
@@ -100,6 +104,82 @@ jobs:
           sys.exit(1 if failed else 0)
           PY
 
+      - name: Check synastry contract against REAL script output
+        # 关键：上一步只校验示例文件，抓不到「脚本实际算出105分」这类偏差。
+        # 本步直接跑 analyze_synastry，并把三方口径（schema 上限 / SKILL.md / 真实输出）对齐。
+        run: |
+          python - <<'PY'
+          import sys, json, random, itertools
+          sys.path.insert(0, "scripts")
+          from fortune_calc import analyze_person, analyze_synastry
+
+          # 分值上限以 schema 为唯一真源
+          schema = json.load(open("schemas/reading_v8.schema.json", encoding="utf-8"))
+          def find_cs(node):
+              if isinstance(node, dict):
+                  if "composite_scores" in node.get("properties", {}):
+                      return node["properties"]["composite_scores"]
+                  for v in node.values():
+                      r = find_cs(v)
+                      if r: return r
+              elif isinstance(node, list):
+                  for v in node:
+                      r = find_cs(v)
+                      if r: return r
+              return None
+          cs_schema = find_cs(schema)
+          assert cs_schema, "schema 中找不到 composite_scores 定义"
+          bands = {
+              k: v.get("properties", {}).get("score", {}).get("maximum")
+              for k, v in cs_schema.get("properties", {}).items()
+              if k != "total"
+          }
+          bands = {k: v for k, v in bands.items() if v is not None}
+          print("schema 声明的分项上限:", bands, "→ 合计", sum(bands.values()))
+          assert sum(bands.values()) == 100, f"schema 分项上限合计 {sum(bands.values())} ≠ 100"
+
+          names = ["张伟", "李娜", "王芳", "刘洋", "陈静", "赵磊"]
+          rnd = random.Random(20250101)
+          failed = 0
+          stats = {}
+          for with_name in (True, False):
+              for n in (2, 3, 5):
+                  hi, lo = -1, 999
+                  for _ in range(150):
+                      members = [analyze_person({
+                          "name": names[i % len(names)] if with_name else "",
+                          "gender": "男" if i % 2 == 0 else "女",
+                          "solar_date": f"{1950 + rnd.randint(0, 55)}-{rnd.randint(1,12):02d}-{rnd.randint(1,28):02d}",
+                          "birth_time": f"{rnd.randint(0,23):02d}:00",
+                      }) for i in range(n)]
+                      r = analyze_synastry(members)
+                      cs = r["composite_scores"]
+                      for k, cap in bands.items():
+                          sc = cs[k]["score"]
+                          if not (0 <= sc <= cap):
+                              failed += 1
+                              print(f"❌ {n}人 {k}={sc} 超出 schema 上限 {cap}")
+                      parts = round(sum(cs[k]["score"] for k in bands), 1)
+                      if abs(parts - r["score"]) > 0.05:
+                          failed += 1
+                          print(f"❌ {n}人：分项之和 {parts} ≠ total {r['score']}")
+                      if r["score"] > r["max_possible"] or r["max_possible"] > 100:
+                          failed += 1
+                          print(f"❌ {n}人：total {r['score']} / 满分 {r['max_possible']} 越界")
+                      hi, lo = max(hi, r["score"]), min(lo, r["score"])
+                  stats[(with_name, n)] = (lo, hi)
+                  print(f"{'有' if with_name else '无'}姓名 {n}人：实测区间 {lo} ~ {hi}")
+
+          # 量纲一致性：不同人数的实测上限不应相差过大（累加式评分会立刻暴露）
+          highs = [v[1] for k, v in stats.items() if k[0]]
+          if max(highs) - min(highs) > 25:
+              failed += 1
+              print(f"❌ 不同人数的得分上限差异过大 {highs}，疑似回退为累加式评分")
+
+          print("✅ 合盘评分契约校验通过" if not failed else f"❌ 共 {failed} 处违约")
+          sys.exit(1 if failed else 0)
+          PY
+
       - name: Smoke test fortune_calc.py
         run: |
           cat > /tmp/test.json <<'EOF'
@@ -141,6 +221,74 @@ jobs:
           assert calc_wuge("欧阳娜娜", 1)["姓氏字数"] == 1
           print("✅ 复姓自动识别回归通过")
           PY
+
+      - name: Deep analysis invariants (喜忌互斥 / 五行全覆盖 / 用神在喜神内)
+        run: |
+          python - <<'PY'
+          import sys, random
+          sys.path.insert(0, "scripts")
+          from fortune_calc import analyze_person
+          random.seed(20260806)
+          WX = {"木", "火", "土", "金", "水"}
+          for i in range(120):
+              y = 1940 + random.randint(0, 70)
+              r = analyze_person({
+                  "name": "测试", "gender": random.choice(["男", "女"]),
+                  "solar_date": f"{y}-{random.randint(1,12):02d}-{random.randint(1,28):02d}",
+                  "birth_time": f"{random.randint(0,23):02d}:{random.randint(0,59):02d}",
+                  "birth_city": random.choice(["北京", "上海", ""]),
+              })
+              d = r.get("deep")
+              assert d is not None, f"深层分析失败: {r['warnings']}"
+              ys = d["yongshen"]
+              flat = ys["喜神"] + ys["忌神"] + ys["仇神"] + ys["闲神"]
+              assert len(flat) == len(set(flat)), f"五行重复归类 {flat}"
+              assert set(flat) == WX, f"五行归类不全 {set(flat)}"
+              assert not ys["用神"] or ys["用神"] in ys["喜神"], "用神不在喜神内"
+              assert 0.1 <= ys["置信度"]["score"] <= 0.95 and ys["置信度"]["reasons"]
+              assert 0 <= d["day_master"]["强弱分"] <= 100
+              zr = d["zhi_relations"]
+              assert zr["合会数"] + zr["刑冲数"] + zr["天干合数"] == len(zr["关系列表"])
+              cv = d["cross_validation"]
+              assert sum(cv["统计"].values()) == len(cv["检测项"])
+          print("✅ 深层分析不变量校验通过（120 组随机命造）")
+          PY
+
+      - name: Dayun timeline cross-check against lunar-python
+        run: |
+          python - <<'EOF'
+          import sys, datetime
+          sys.path.insert(0, "scripts")
+          from fortune_calc import analyze_person
+          from lunar_python import Solar
+          cases = [("男",1990,5,20,14,30), ("女",1992,8,15,9,0),
+                   ("女",1978,12,25,3,20), ("男",2001,2,4,23,50),
+                   ("女",1965,3,11,18,5),  ("男",2010,11,7,6,40),
+                   ("男",1947,7,3,11,15),  ("女",2019,4,29,20,55)]
+          now = datetime.date.today().year
+          bad = 0
+          for g,y,mo,d,hh,mm in cases:
+              r = analyze_person({"name":"校验","gender":g,
+                  "solar_date":f"{y}-{mo:02d}-{d:02d}",
+                  "birth_time":f"{hh:02d}:{mm:02d}","birth_city":"北京"})
+              dy = r["deep"]["dayun"]
+              yun = (Solar.fromYmdHms(y,mo,d,hh,mm,0).getLunar()
+                     .getEightChar().getYun(1 if g=="男" else 0))
+              if dy["起运"]["起运岁"] != yun.getStartYear():
+                  bad += 1; print(f"❌ {y}-{mo}-{d} 起运岁 {dy['起运']['起运岁']} != {yun.getStartYear()}")
+              ref = next((x.getGanZhi() for x in yun.getDaYun()
+                          if x.getStartYear() <= now <= x.getEndYear() and x.getGanZhi()), None)
+              if ref and dy["当前大运"]["状态"] == "行运中" and dy["当前大运"]["干支"] != ref:
+                  bad += 1; print(f"❌ {y}-{mo}-{d} 当前大运 {dy['当前大运']['干支']} != {ref}")
+              texts = [dy["当前大运"]["解读"]] + [u["解读"] for u in dy["未来三年"]]
+              if len(dy["未来三年"]) != 3:
+                  bad += 1; print(f"❌ {y} 流年数不为 3")
+              if sum(len(t) for t in texts) > 600:
+                  bad += 1; print(f"❌ {y} 时间轴判语超长，违反输出纪律")
+          if bad:
+              sys.exit(1)
+          print("✅ 大运起运与当前运干支与 lunar-python 一致，时间轴范围与篇幅合规")
+          EOF
 
       - name: Smoke test generate_html.py
         run: |

@@ -23,6 +23,14 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 from fortune_calc import (
+    _get_ziwei_zhi_idx,
+    _place_ziwei_system,
+    _place_tianfu_system,
+    _place_auxiliary_stars,
+    _build_wuxing_ju_map,
+    get_shichen,
+    DI_ZHI,
+    TIAN_GAN,
     calc_four_pillars,
     get_zodiac_precise,
     get_moon_sign,
@@ -32,6 +40,7 @@ from fortune_calc import (
     _jde_to_beijing,
     DI_ZHI, ZODIAC_ORDER,
 )
+from fortune_calc import analyze_person, analyze_synastry
 
 
 # ============================================================
@@ -228,67 +237,157 @@ class TestMoonSign(unittest.TestCase):
 
 class TestZiweiStars(unittest.TestCase):
     """
-    紫微斗数14主星安星准确性测试。
-    采用北派算法（标准《紫微斗数全书》流派）。
-    期望值由算法计算输出，并与 PyEphem/论命网 交叉验证命宫干支。
+    紫微斗数安星准确性测试。
 
-    五行局对照：
-    - 壬申年 -> 金四局（命宫：戊申宫）
-    - 甲子年 -> 火六局（命宫：甲戌宫）
-    - 庚午年 -> 火六局（命宫：戊子宫）
-    - 丙寅年 -> 土五局（命宫：辛丑宫）
-    - 戊辰年 -> 木三局（五行局由命宫天干地支查纳音决定）
+    ⚠️ 历史教训：本类此前的期望值是「由算法计算输出」自证得来的，
+    因此长期掩盖了安星算法的根本性错误（起紫微星缺「奇减偶加」、
+    天府公式写成 (14-紫微)、紫微系偏移方向取反、五行局纳音表 60 组错 16 组、
+    文昌文曲误用年支、左辅右弼起月错、铃星起宫表错）。
+
+    现改为**对照外部权威资料**，禁止再用本仓库算法自身生成期望值：
+      - 起紫微星表：紫微斗数学堂（ziweicn.com）15 日 × 三局
+      - 起紫微帝曜检索表：中华科技大学紫微命盘讲义 9 日 × 五局（独立第二来源）
+      - 安星诀例题：星侨中国五术网 / 紫微斗数学堂共 5 题
+      - 安天府星诀、紫微系与天府系安星诀、安文昌文曲/左辅右弼/火铃诀
+      - 六十甲子纳音（五行局）
     """
 
-    CASES = [
-        # (lunar_month, lunar_day, hour, gender, year_gan, year_zhi,
-        #  expected_ziwei_zhi, expected_tianfu_zhi, wuxing_ju, source)
-        #
-        # 注：五行局由【命宫天干+命宫地支】（纳音）决定，非年柱，测试值均经算法验证。
-        #
-        # 壬申年 农历1月 午时 -> 命宫=戊申宫 -> (戊,申)=金四局
-        (1, 1,  12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        (1, 2,  12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        (1, 3,  12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        (1, 7,  12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        (1, 10, 12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        (1, 15, 12, "男", "壬", "申", "子", "寅", "金四局", "北派算法"),
-        # 戊辰年 农历2月 午时 -> 命宫=辛酉宫 -> (辛,酉)=木三局
-        (2, 1,  12, "男", "戊", "辰", "子", "寅", "木三局", "北派算法"),
-        (2, 2,  12, "男", "戊", "辰", "酉", "亥", "木三局", "北派算法"),
-        (2, 3,  12, "男", "戊", "辰", "子", "寅", "木三局", "北派算法"),
-        (2, 6,  12, "男", "戊", "辰", "子", "寅", "木三局", "北派算法"),
-        (2, 10, 12, "男", "戊", "辰", "子", "寅", "木三局", "北派算法"),
-        # 甲子年 农历3月 午时 -> 命宫=甲戌宫 -> (甲,戌)=火六局
-        (3, 1,  12, "男", "甲", "子", "子", "寅", "火六局", "北派算法"),
-        (3, 4,  12, "男", "甲", "子", "亥", "丑", "火六局", "北派算法"),
-        (3, 8,  12, "男", "甲", "子", "子", "寅", "火六局", "北派算法"),
-        (3, 12, 12, "男", "甲", "子", "亥", "丑", "火六局", "北派算法"),
-        # 庚午年 农历4月 卯时 -> 命宫=己丑宫 -> (己,丑)=火六局
-        (4, 26,  8, "男", "庚", "午", "子", "寅", "火六局", "北派算法"),
-        # 庚午年 农历5月 午时 -> 命宫=戊子宫 -> (戊,子)=火六局
-        (5, 1,  12, "男", "庚", "午", "子", "寅", "火六局", "北派算法"),
-        (5, 5,  12, "男", "庚", "午", "子", "寅", "火六局", "北派算法"),
-        (5, 10, 12, "男", "庚", "午", "子", "寅", "火六局", "北派算法"),
-        # 丙寅年 农历6月 午时 -> 命宫=辛丑宫 -> (辛,丑)=土五局
-        (6, 1,  12, "男", "丙", "寅", "子", "寅", "土五局", "北派算法"),
-        (6, 6,  12, "男", "丙", "寅", "子", "寅", "土五局", "北派算法"),
-        (6, 12, 12, "男", "丙", "寅", "子", "寅", "土五局", "北派算法"),
+    # 起紫微星表（紫微斗数学堂），生日 1..15
+    ZIWEI_TABLE_15 = {
+        2: "丑寅寅卯卯辰辰巳巳午午未未申申",
+        3: "辰丑寅巳寅卯午卯辰未辰巳申巳午",
+        6: "酉午亥辰丑寅戌未子巳寅卯亥申丑",
+    }
+    # 起紫微帝曜检索表（中华科技大学讲义），生日 1..9，含金四局/土五局
+    ZIWEI_TABLE_9 = {
+        2: "丑寅寅卯卯辰辰巳巳",
+        3: "辰丑寅巳寅卯午卯辰",
+        4: "亥辰丑寅子巳寅卯丑",
+        5: "午亥辰丑寅未子巳寅",
+        6: "酉午亥辰丑寅戌未子",
+    }
+    # 安星诀例题：(生日, 局数, 紫微所在地支, 出处)
+    ZIWEI_EXAMPLES = [
+        (27, 3, "戌", "星侨中国五术网"),
+        (13, 6, "亥", "星侨中国五术网"),
+        (6,  5, "未", "星侨中国五术网"),
+        (22, 3, "亥", "紫微斗数学堂"),
+        (27, 4, "未", "紫微斗数学堂"),
+    ]
+    # 六十甲子纳音（每两组一音）
+    NA_YIN_60 = [
+        "海中金", "炉中火", "大林木", "路旁土", "剑锋金", "山头火",
+        "涧下水", "城头土", "白蜡金", "杨柳木", "泉中水", "屋上土",
+        "霹雳火", "松柏木", "长流水", "沙中金", "山下火", "平地木",
+        "壁上土", "金箔金", "覆灯火", "天河水", "大驿土", "钗钏金",
+        "桑柘木", "大溪水", "沙中土", "天上火", "石榴木", "大海水",
     ]
 
-    def test_ziwei_star_positions(self):
-        """验证紫微星与天府星落宫（五行局）"""
-        for case in self.CASES:
-            lm, ld, h, gender, yg, yz = case[0], case[1], case[2], case[3], case[4], case[5]
-            expected_ju = case[8]
-            source = case[9]
-            with self.subTest(lunar=f"{lm}月{ld}日", year_gz=f"{yg}{yz}"):
-                result = calc_ziwei_full(yg, yz, lm, ld, float(h), gender)
-                self.assertEqual(
-                    result["五行局"], expected_ju,
-                    f"农历{lm}月{ld}日 年干{yg}{yz} "
-                    f"计算={result['五行局']} 期望={expected_ju} 来源={source}"
-                )
+    def test_ziwei_position_matches_authoritative_table_15(self):
+        """起紫微星：对照 ziweicn 安星表（1-15 日 × 水二/木三/火六局）"""
+        for ju, row in self.ZIWEI_TABLE_15.items():
+            got = "".join(DI_ZHI[_get_ziwei_zhi_idx(d, ju)] for d in range(1, 16))
+            self.assertEqual(got, row, f"{ju}局 1-15 日安紫微不符权威表")
+
+    def test_ziwei_position_matches_authoritative_table_9(self):
+        """起紫微星：对照独立第二来源检索表（1-9 日 × 全部五局）"""
+        for ju, row in self.ZIWEI_TABLE_9.items():
+            got = "".join(DI_ZHI[_get_ziwei_zhi_idx(d, ju)] for d in range(1, 10))
+            self.assertEqual(got, row, f"{ju}局 1-9 日安紫微不符检索表")
+
+    def test_ziwei_classic_examples(self):
+        """起紫微星：典籍例题（覆盖整除、奇数补数、偶数补数三种分支）"""
+        for day, ju, expected, src in self.ZIWEI_EXAMPLES:
+            got = DI_ZHI[_get_ziwei_zhi_idx(day, ju)]
+            self.assertEqual(got, expected, f"{day}日{ju}局应在{expected}宫（{src}）")
+
+    def test_tianfu_is_symmetric_about_yin_shen_axis(self):
+        """安天府星诀：紫微天府以寅—申轴对称，唯寅申同宫"""
+        for zi, expected in [("子", "辰"), ("丑", "卯"), ("寅", "寅"), ("卯", "丑"),
+                             ("辰", "子"), ("巳", "亥"), ("午", "戌"), ("未", "酉"),
+                             ("申", "申"), ("酉", "未"), ("戌", "午"), ("亥", "巳")]:
+            z = DI_ZHI.index(zi)
+            got = DI_ZHI[_place_tianfu_system(z)["天府"]]
+            self.assertEqual(got, expected, f"紫微在{zi}时天府应在{expected}")
+            # 紫微 + 天府 恒 ≡ 4 (mod 12)
+            self.assertEqual((z + _place_tianfu_system(z)["天府"]) % 12, 4)
+
+    def test_ziwei_system_offsets_are_retrograde(self):
+        """「紫微天机逆行旁，隔一阳武天同当，又隔二位遇廉贞」——典籍例：紫微在寅"""
+        stars = _place_ziwei_system(DI_ZHI.index("寅"))
+        for star, expected in [("紫微", "寅"), ("天机", "丑"), ("太阳", "亥"),
+                               ("武曲", "戌"), ("天同", "酉"), ("廉贞", "午")]:
+            self.assertEqual(DI_ZHI[stars[star]], expected,
+                             f"紫微在寅时{star}应在{expected}")
+
+    def test_tianfu_system_offsets_are_prograde(self):
+        """「天府太阴与贪狼，巨门天相及天梁，七杀空三破军位」"""
+        base = DI_ZHI.index("寅")
+        stars = _place_tianfu_system(base)  # 紫微在寅 → 天府亦在寅
+        for star, off in [("天府", 0), ("太阴", 1), ("贪狼", 2), ("巨门", 3),
+                          ("天相", 4), ("天梁", 5), ("七杀", 6), ("破军", 10)]:
+            self.assertEqual(stars[star], (base + off) % 12, f"{star}偏移错误")
+
+    def test_wuxing_ju_matches_na_yin(self):
+        """五行局：60 组命宫干支须与六十甲子纳音五行完全一致"""
+        ju_of = {"金": "金四局", "木": "木三局", "水": "水二局",
+                 "火": "火六局", "土": "土五局"}
+        table = _build_wuxing_ju_map()
+        self.assertEqual(len(table), 60)
+        for i in range(60):
+            gan, zhi = TIAN_GAN[i % 10], DI_ZHI[i % 12]
+            na_yin = self.NA_YIN_60[i // 2]
+            expected = ju_of[na_yin[-1]]
+            self.assertEqual(table[(gan, zhi)][0], expected,
+                             f"{gan}{zhi}（{na_yin}）应为{expected}")
+
+    def test_wenchang_wenqu_use_hour_branch(self):
+        """「文昌戌上起子时逆至生时，文曲辰宫起子时顺到生时」——以时支而非年支起"""
+        for hour in range(0, 24, 2):
+            hi = get_shichen(hour)
+            aux = _place_auxiliary_stars("甲", "子", 1, 1, hour, "男")
+            self.assertEqual(aux["文昌"], (10 - hi) % 12, f"{hour}时文昌错")
+            self.assertEqual(aux["文曲"], (4 + hi) % 12, f"{hour}时文曲错")
+        # 换年支不应改变文昌文曲（证明未误用年支）
+        a1 = _place_auxiliary_stars("甲", "子", 1, 1, 12, "男")
+        a2 = _place_auxiliary_stars("甲", "午", 1, 1, 12, "男")
+        self.assertEqual((a1["文昌"], a1["文曲"]), (a2["文昌"], a2["文曲"]))
+
+    def test_zuofu_youbi_start_from_first_lunar_month(self):
+        """「左辅正月起辰宫顺逢生月，右弼正月宫寻戌逆至生月」"""
+        for m in range(1, 13):
+            aux = _place_auxiliary_stars("甲", "子", m, 1, 12, "男")
+            self.assertEqual(aux["左辅"], (4 + m - 1) % 12, f"{m}月左辅错")
+            self.assertEqual(aux["右弼"], (10 - (m - 1)) % 12, f"{m}月右弼错")
+        # 正月左辅在辰、右弼在戌；二者恒对宫
+        for m in range(1, 13):
+            aux = _place_auxiliary_stars("甲", "子", m, 1, 12, "男")
+            self.assertEqual((aux["左辅"] + aux["右弼"]) % 12, 2)
+
+    def test_huoxing_lingxing_start_palaces(self):
+        """「申子辰人寅戌扬，寅午戌人丑卯方，巳酉丑人卯戌位，亥卯未人酉戌房」"""
+        huo = {"申": 2, "子": 2, "辰": 2, "寅": 1, "午": 1, "戌": 1,
+               "巳": 3, "酉": 3, "丑": 3, "亥": 9, "卯": 9, "未": 9}
+        ling = {"申": 10, "子": 10, "辰": 10, "寅": 3, "午": 3, "戌": 3,
+                "巳": 10, "酉": 10, "丑": 10, "亥": 10, "卯": 10, "未": 10}
+        for zhi in DI_ZHI:
+            for hour in range(0, 24, 4):
+                hi = get_shichen(hour)
+                aux = _place_auxiliary_stars("甲", zhi, 1, 1, hour, "男")
+                self.assertEqual(aux["火星"], (huo[zhi] + hi) % 12, f"{zhi}年{hour}时火星错")
+                self.assertEqual(aux["铃星"], (ling[zhi] + hi) % 12, f"{zhi}年{hour}时铃星错")
+
+    def test_fourteen_main_stars_occupy_distinct_pattern(self):
+        """结构不变量：14 主星恒分布于 12 宫，且紫府两系各自连续"""
+        for ju in (2, 3, 4, 5, 6):
+            for day in range(1, 31):
+                z = _get_ziwei_zhi_idx(day, ju)
+                zs, ts = _place_ziwei_system(z), _place_tianfu_system(z)
+                self.assertEqual(len(zs) + len(ts), 14)
+                # 紫微系六星互不重宫
+                self.assertEqual(len(set(zs.values())), 6)
+                # 天府系八星占七宫（七杀与破军间空三，天府系内无重复偏移）
+                self.assertEqual(len(set(ts.values())), 8)
 
     def test_main_stars_exist(self):
         """验证14颗主星都有安星结果"""
@@ -435,8 +534,481 @@ class TestEndToEnd(unittest.TestCase):
 
 
 # ============================================================
+# 合盘评分契约回归（防止「文档说100、脚本算105」这类漂移）
+# ============================================================
+
+# 与 SKILL.md §9.1、schemas/reading_v8.schema.json 严格一致
+SYNASTRY_BANDS = {
+    "wuxing_balance": 20,
+    "wuxing_complete": 5,
+    "shengxiao": 20,
+    "xingzuo": 15,
+    "riZhu": 20,
+    "chenggu": 15,
+    "xingming": 5,
+}
+
+
+def _make_member(idx, seed_rand, with_name=True):
+    names = ["张伟", "李娜", "王芳", "刘洋", "陈静", "赵磊", "欧阳明", "司马光"]
+    y = 1950 + seed_rand.randint(0, 55)
+    return {
+        "name": names[idx % len(names)] if with_name else "",
+        "gender": "男" if idx % 2 == 0 else "女",
+        "solar_date": f"{y}-{seed_rand.randint(1, 12):02d}-{seed_rand.randint(1, 28):02d}",
+        "birth_time": f"{seed_rand.randint(0, 23):02d}:{seed_rand.choice([0, 15, 30, 45]):02d}",
+    }
+
+
+class TestSynastryScoreContract(unittest.TestCase):
+    """
+    对 analyze_synastry 的**真实计算输出**做回归，而不是只校验 examples/*.json。
+
+    背景：v8.1 之前脚本实际上限为 105 分（五行平衡给到 25、称骨给到 20、
+    姓名项完全未实现），与 README / SKILL.md / schema 的 100 分契约不符；
+    且因三项按人对累加，2 人组最高 77 分、5 人组最高 105 分，分数不可横向比较。
+    这些偏差只校验示例文件是抓不到的。
+    """
+
+    RANDOM_TRIALS = 120
+
+    def _iter_cases(self):
+        import random
+        for with_name in (True, False):
+            for n in (2, 3, 5):
+                rnd = random.Random(20250101 + n * 7 + int(with_name))
+                for _ in range(self.RANDOM_TRIALS):
+                    members = [
+                        analyze_person(_make_member(i, rnd, with_name))
+                        for i in range(n)
+                    ]
+                    yield n, with_name, analyze_synastry(members)
+
+    def test_each_dimension_within_band(self):
+        """每个分项都必须落在其声明的分值区间内。"""
+        for n, with_name, r in self._iter_cases():
+            cs = r["composite_scores"]
+            for key, cap in SYNASTRY_BANDS.items():
+                self.assertIn(key, cs, f"{n}人合盘缺少分项 {key}")
+                score = cs[key]["score"]
+                self.assertGreaterEqual(score, 0, f"{key} 为负：{score}")
+                self.assertLessEqual(
+                    score, cap,
+                    f"{n}人（{'有' if with_name else '无'}姓名）{key}={score} 超出上限 {cap}",
+                )
+
+    def test_total_equals_sum_and_never_exceeds_max(self):
+        """total 必须等于分项之和，且不得超过 max_possible。"""
+        for n, with_name, r in self._iter_cases():
+            cs = r["composite_scores"]
+            parts = round(sum(cs[k]["score"] for k in SYNASTRY_BANDS), 1)
+            self.assertAlmostEqual(
+                parts, r["score"], places=1,
+                msg=f"{n}人：分项之和 {parts} ≠ total {r['score']}",
+            )
+            self.assertLessEqual(
+                r["score"], r["max_possible"],
+                f"{n}人：total {r['score']} 超过满分 {r['max_possible']}",
+            )
+            self.assertLessEqual(r["max_possible"], 100)
+
+    def test_max_possible_reflects_name_availability(self):
+        """全员有姓名 → 满分100；否则姓名项计0分、满分95。"""
+        for n, with_name, r in self._iter_cases():
+            if with_name:
+                self.assertEqual(r["max_possible"], 100, f"{n}人有姓名却非满分100")
+            else:
+                self.assertEqual(r["max_possible"], 95, f"{n}人无姓名却非满分95")
+                self.assertEqual(r["composite_scores"]["xingming"]["score"], 0)
+
+    def test_score_is_group_size_invariant(self):
+        """
+        同一量纲检查：各组人数的得分区间应大致重叠，
+        不应出现「5人组普遍高出一整档」的累加式伪高分。
+        """
+        import statistics
+        means = {}
+        for n in (2, 3, 5):
+            scores = [r["score"] for m, w, r in self._iter_cases() if m == n and w]
+            means[n] = statistics.mean(scores)
+        spread = max(means.values()) - min(means.values())
+        self.assertLess(
+            spread, 12,
+            f"不同人数的平均分差异过大（{means}），说明评分仍随人数系统性漂移",
+        )
+
+    def test_known_pair_is_deterministic_and_documented(self):
+        """固定输入的黄金用例，锁死口径变更。"""
+        a = analyze_person({"name": "张伟", "gender": "男",
+                            "solar_date": "1990-05-20", "birth_time": "14:30"})
+        b = analyze_person({"name": "李娜", "gender": "女",
+                            "solar_date": "1992-08-15", "birth_time": "09:00"})
+        r1 = analyze_synastry([a, b])
+        r2 = analyze_synastry([a, b])
+        self.assertEqual(r1["score"], r2["score"], "同一输入两次计算结果不一致")
+        self.assertEqual(r1["pair_count"], 1)
+        self.assertEqual(r1["max_possible"], 100)
+        self.assertTrue(0 <= r1["score"] <= 100)
+        self.assertIn("★", r1["rating"])
+
+    def test_rating_matches_percentage_thresholds(self):
+        """评级必须由 total/max_possible 百分比推出，而非绝对分。"""
+        for n, with_name, r in self._iter_cases():
+            pct = r["score"] / r["max_possible"] * 100
+            self.assertAlmostEqual(pct, r["percentage"], places=1)
+            expected = (
+                "极佳" if pct >= 85 else
+                "良好" if pct >= 70 else
+                "中等" if pct >= 55 else
+                "有待改善" if pct >= 40 else "需多加注意"
+            )
+            self.assertIn(expected, r["rating"], f"{pct:.1f}% 对应评级错误：{r['rating']}")
+
+    def test_single_member_returns_note(self):
+        """不足2人时返回提示而非评分。"""
+        a = analyze_person({"name": "张伟", "gender": "男",
+                            "solar_date": "1990-05-20", "birth_time": "14:30"})
+        self.assertIn("note", analyze_synastry([a]))
+
+
+# ============================================================
 # 报告生成器
 # ============================================================
+
+class TestDeepAnalysis(unittest.TestCase):
+    """深层分析契约：藏干十神 / 刑冲合会 / 用神喜忌 / 跨系统一致性。
+
+    这些不是「看起来对不对」的测试，而是命理逻辑上不允许被违反的硬约束：
+    喜忌不能重叠、五行必须被完整归类、用神必在喜神之列、
+    忌神必须是「克用神者」而非「用神所克者」。
+    """
+
+    WX = {"木", "火", "土", "金", "水"}
+    CASES = [
+        ("张伟", "1990-05-20", "14:30", "北京"),
+        ("李娜", "1992-08-15", "09:00", "上海"),
+        ("王芳", "1978-12-25", "03:20", "广州"),
+        ("刘洋", "2001-02-04", "23:50", ""),
+        ("欧阳明", "1965-07-07", "12:00", "北京"),
+    ]
+
+    @classmethod
+    def setUpClass(cls):
+        from fortune_calc import analyze_person
+        cls.people = [
+            analyze_person({"name": n, "gender": "男", "solar_date": d,
+                            "birth_time": t, "birth_city": c})
+            for n, d, t, c in cls.CASES
+        ]
+
+    def test_deep_block_present(self):
+        for r in self.people:
+            self.assertIsNotNone(r.get("deep"), f"{r['name']} 缺少 deep 区块")
+            self.assertEqual(
+                set(r["deep"].keys()),
+                {"canggan_shishen", "zhi_relations", "day_master",
+                 "yongshen", "cross_validation", "dayun"})
+
+    def test_canggan_shishen_complete(self):
+        for r in self.people:
+            cg = r["deep"]["canggan_shishen"]
+            self.assertEqual(len(cg["四柱藏干"]), 4)
+            for pillar in cg["四柱藏干"]:
+                self.assertTrue(pillar["藏干"], f"{pillar['柱']}柱藏干为空")
+                for h in pillar["藏干"]:
+                    self.assertIn(h["气"], ("本气", "中气", "余气"))
+                    self.assertGreater(h["力量"], 0)
+            self.assertEqual(
+                sum(1 for p in cg["四柱藏干"] for h in p["藏干"] if h["司令"]), 1,
+                "月令司令必须且只能有一个")
+            self.assertIn(cg["日主通根"]["质量"], ("根深", "有根", "根浅", "无根"))
+
+    def test_xi_ji_mutually_exclusive_and_exhaustive(self):
+        """喜/忌/仇/闲必须互斥且恰好覆盖五行——这是喜忌表可信的最低门槛。"""
+        for r in self.people:
+            ys = r["deep"]["yongshen"]
+            groups = [ys["喜神"], ys["忌神"], ys["仇神"], ys["闲神"]]
+            flat = [w for g in groups for w in g]
+            self.assertEqual(len(flat), len(set(flat)),
+                             f"{r['name']} 五行被重复归类：{flat}")
+            self.assertEqual(set(flat), self.WX,
+                             f"{r['name']} 五行归类不完整：{set(flat)}")
+
+    def test_yongshen_within_favorable(self):
+        for r in self.people:
+            ys = r["deep"]["yongshen"]
+            if ys["用神"]:
+                self.assertIn(ys["用神"], ys["喜神"],
+                              f"{r['name']} 用神 {ys['用神']} 不在喜神之列")
+
+    def test_ji_shen_is_what_attacks_yongshen(self):
+        """忌神方向性：中和局以调候定用神时，忌神须为克用神者。"""
+        from deep_analysis import KE
+        for r in self.people:
+            ys = r["deep"]["yongshen"]
+            if ys["扶抑调候关系"] == "仅调候" and ys["用神"]:
+                attacker = next(k for k, v in KE.items() if v == ys["用神"])
+                self.assertIn(attacker, ys["忌神"],
+                              f"{r['name']} 忌神应含克用神的 {attacker}")
+                self.assertNotIn(KE[ys["用神"]], ys["忌神"],
+                                 f"{r['name']} 忌神方向反了")
+
+    def test_tongguan_never_contradicts_jishen(self):
+        """通关神若本身属忌，不得并入喜神。"""
+        for r in self.people:
+            ys = r["deep"]["yongshen"]
+            tg = ys.get("通关")
+            if tg and not tg["并入喜神"]:
+                self.assertNotIn(tg["元素"], ys["喜神"])
+
+    def test_day_master_score_bounded(self):
+        for r in self.people:
+            dm = r["deep"]["day_master"]
+            self.assertGreaterEqual(dm["强弱分"], 0)
+            self.assertLessEqual(dm["强弱分"], 100)
+            self.assertIn(dm["标签"], ("身强", "偏强", "中和", "偏弱", "身弱"))
+
+    def test_confidence_bounded_and_justified(self):
+        for r in self.people:
+            conf = r["deep"]["yongshen"]["置信度"]
+            self.assertIn(conf["level"], ("high", "medium", "low"))
+            self.assertGreaterEqual(conf["score"], 0.1)
+            self.assertLessEqual(conf["score"], 0.95)
+            self.assertTrue(conf["reasons"], "置信度必须给出理由，不能是裸分数")
+
+    def test_conflict_declares_school(self):
+        """扶抑与调候冲突时，必须声明流派而非假装唯一定论。"""
+        for r in self.people:
+            ys = r["deep"]["yongshen"]
+            if ys["扶抑调候关系"] == "冲突":
+                self.assertTrue(ys["注意事项"], f"{r['name']} 冲突未声明流派")
+
+    def test_zhi_relations_wellformed(self):
+        for r in self.people:
+            zr = r["deep"]["zhi_relations"]
+            self.assertEqual(
+                zr["合会数"] + zr["刑冲数"] + zr["天干合数"],
+                len(zr["关系列表"]), "关系计数与关系列表必须对得上")
+            self.assertTrue(zr["总体基调"])
+
+    def test_cross_validation_conflicts_are_kept(self):
+        """分歧比一致更有信息量，检测项不得被静默丢弃。"""
+        for r in self.people:
+            cv = r["deep"]["cross_validation"]
+            self.assertEqual(sum(cv["统计"].values()), len(cv["检测项"]))
+            for c in cv["检测项"]:
+                self.assertIn(c["结论"], ("一致", "部分一致", "分歧", "不确定", "提示"))
+                self.assertTrue(c["说明"])
+            self.assertTrue(cv["叙事指引"])
+
+    def test_siling_fallback_is_benqi_not_yuqi(self):
+        """拿不到节令日差时须退回本气（分野末段），取首段会误取上月余气。"""
+        from deep_analysis import _si_ling_gan, SI_LING_FEN_YE, CANG_GAN
+        for zhi in SI_LING_FEN_YE:
+            got, estimated = _si_ling_gan(zhi, None)
+            self.assertTrue(estimated)
+            self.assertEqual(got, CANG_GAN[zhi][0],
+                             f"{zhi}月退回值应为本气 {CANG_GAN[zhi][0]}，实得 {got}")
+
+    def test_siling_marked_exactly_once_or_declared(self):
+        """分野与藏干出自不同传承，司令干可能不在藏干表内，此时须如实标注。"""
+        from deep_analysis import analyze_canggan_shishen, SI_LING_FEN_YE, CANG_GAN
+        for zhi in SI_LING_FEN_YE:
+            for day in range(0, 30):
+                r = analyze_canggan_shishen(
+                    ["甲子", f"丙{zhi}", "戊寅", "癸亥"], "戊", days_into_month=day)
+                marked = sum(1 for p in r["四柱藏干"]
+                             for h in p["藏干"] if h["司令"])
+                ml = r["月令司令"]
+                if ml["入藏干"] or any(
+                        __import__("deep_analysis").WU_XING_GAN[c]
+                        == ml["五行"] for c in CANG_GAN[zhi]):
+                    self.assertEqual(marked, 1,
+                                     f"{zhi}月第{day}日：司令标记应为1，实得{marked}")
+                else:
+                    self.assertEqual(marked, 0)
+                    self.assertFalse(ml["入藏干"],
+                                     "司令干不在藏干内时必须标注 入藏干=False")
+
+    def test_san_xing_merged_not_double_counted(self):
+        """寅巳申/丑戌未三刑全备须合并为一条，否则刑冲数虚高污染基调。"""
+        from deep_analysis import analyze_zhi_relations
+        for bazi, group in ((["甲寅", "乙巳", "戊申", "甲寅"], "寅巳申"),
+                            (["乙丑", "丙戌", "戊未", "乙丑"], "丑戌未")):
+            r = analyze_zhi_relations(bazi)
+            types = [it["类型"] for it in r["关系列表"]]
+            self.assertEqual(types.count("三刑"), 1, f"{group} 应有且仅有一条三刑")
+            self.assertEqual(types.count("相刑"), 0,
+                             f"{group} 三刑全备时不应再拆出两两相刑")
+
+    def test_zi_mao_xing_not_treated_as_san_xing(self):
+        """子卯为二支相刑，不属三刑全备，仍应走两两判定。"""
+        from deep_analysis import analyze_zhi_relations
+        r = analyze_zhi_relations(["甲子", "乙卯", "丙寅", "丁丑"])
+        types = [it["类型"] for it in r["关系列表"]]
+        self.assertIn("相刑", types)
+        self.assertNotIn("三刑", types)
+
+    def test_tone_uses_weighted_power_not_raw_count(self):
+        """六冲与相破分量差数倍，基调须由加权冲力决定而非条目数。"""
+        from deep_analysis import analyze_zhi_relations
+        for bazi in (["甲寅", "乙巳", "戊申", "甲寅"],
+                     ["甲子", "乙丑", "丙寅", "丁卯"],
+                     ["甲午", "丙子", "戊午", "庚子"]):
+            r = analyze_zhi_relations(bazi)
+            self.assertIn("合力", r)
+            self.assertIn("冲力", r)
+            self.assertGreaterEqual(r["合力"], 0)
+            self.assertGreaterEqual(r["冲力"], 0)
+
+    def test_hua_bonus_only_when_de_ling(self):
+        """合化加成只在化神得令时施加——合而不化者不改变五行格局。"""
+        from deep_analysis import (analyze_canggan_shishen, analyze_zhi_relations,
+                                   _element_powers)
+        bazi = ["庚午", "辛巳", "乙酉", "癸未"]   # 巳午未三会火局，生巳月，火得令
+        cg = analyze_canggan_shishen(bazi, "乙", 20)
+        rel = analyze_zhi_relations(bazi)
+        base, _ = _element_powers(bazi, cg, None)
+        with_hua, applied = _element_powers(bazi, cg, rel)
+        self.assertTrue(applied, "三会火局且化神得令，应有合化加成")
+        self.assertGreater(with_hua["火"], base["火"], "得令的三会局须提升化神力量")
+        for it in rel["关系列表"]:
+            if it.get("五行") and not it.get("化神得令"):
+                self.assertNotIn(it["关系"], " ".join(applied),
+                                 "不得令的合局不应加成")
+
+    def test_missing_element_that_is_jishen_is_not_a_defect(self):
+        """缺忌神反为吉，不得一律判作「未补足=分歧」。"""
+        from deep_analysis import cross_validate
+        for r in self.people:
+            cv = r["deep"]["cross_validation"]
+            ys = r["deep"]["yongshen"]
+            item = next((c for c in cv["检测项"] if c["id"] == "missing_fill"), None)
+            if item is None:
+                continue
+            missing = set(r.get("missing_wx") or [])
+            wg = (r.get("wuge") or {}).get("五格", {})
+            name_all = {(wg.get(k) or {}).get("五行")
+                        for k in ("天格", "人格", "地格", "外格", "总格")}
+            name_all.discard(None)
+            # 缺的全是忌神、且姓名也没补进来 → 不应判为分歧
+            if missing and missing <= set(ys["忌神"]) and not (missing & name_all):
+                self.assertEqual(item["结论"], "一致",
+                                 f"{r['name']} 缺的全是忌神且未被补入，不应判分歧")
+
+    def test_qiyun_matches_independent_library(self):
+        """起运岁数与当前大运干支须与 lunar-python 独立实现一致。"""
+        try:
+            from lunar_python import Solar
+        except ImportError:
+            self.skipTest("lunar-python 未安装")
+        import datetime
+        cases = [("男", 1990, 5, 20, 14, 30), ("女", 1992, 8, 15, 9, 0),
+                 ("女", 1978, 12, 25, 3, 20), ("男", 2001, 2, 4, 23, 50),
+                 ("女", 1965, 3, 11, 18, 5), ("男", 2010, 11, 7, 6, 40)]
+        now = datetime.date.today().year
+        for g, y, mo, d, hh, mm in cases:
+            r = analyze_person({"name": "测试", "gender": g,
+                                "solar_date": f"{y}-{mo:02d}-{d:02d}",
+                                "birth_time": f"{hh:02d}:{mm:02d}",
+                                "birth_city": "北京"})
+            dy = r["deep"]["dayun"]
+            self.assertTrue(dy["可用"], f"{y} 起运不可用")
+            yun = (Solar.fromYmdHms(y, mo, d, hh, mm, 0).getLunar()
+                   .getEightChar().getYun(1 if g == "男" else 0))
+            self.assertEqual(dy["起运"]["起运岁"], yun.getStartYear(),
+                             f"{y}-{mo}-{d} 起运岁数与 lunar-python 不符")
+            self.assertLessEqual(abs(dy["起运"]["起运月"] - yun.getStartMonth()), 1,
+                                 f"{y}-{mo}-{d} 起运月数偏差超过 1")
+            ref = next((x.getGanZhi() for x in yun.getDaYun()
+                        if x.getStartYear() <= now <= x.getEndYear()
+                        and x.getGanZhi()), None)
+            if ref and dy["当前大运"]["状态"] == "行运中":
+                self.assertEqual(dy["当前大运"]["干支"], ref,
+                                 f"{y}-{mo}-{d} 当前大运干支与 lunar-python 不符")
+
+    def test_qiyun_direction_rule(self):
+        """阳男阴女顺行、阴男阳女逆行，且顺行数下节、逆行数上节。"""
+        from deep_analysis import _qi_yun
+        for ygan, gender, want in (("甲", "男", True), ("甲", "女", False),
+                                   ("乙", "男", False), ("乙", "女", True)):
+            q = _qi_yun([ygan + "子", "丙寅", "戊辰", "庚申"], gender, 9.0, 12.0)
+            self.assertEqual(q["顺行"], want, f"{ygan}年{gender}命方向判错")
+            self.assertEqual(q["节令距离"], 12.0 if want else 9.0,
+                             "顺行须数下一节令、逆行须数上一节令")
+            self.assertEqual(q["起运岁"], int((12.0 if want else 9.0) // 3))
+
+    def test_timeline_scope_is_bounded(self):
+        """只输出当前大运 + 三个流年，防止日后被扩成八步全表。"""
+        for r in self.people:
+            dy = r["deep"].get("dayun")
+            if not dy or not dy.get("可用"):
+                continue
+            self.assertEqual(len(dy["未来三年"]), 3)
+            self.assertNotIn("大运列表", dy)
+            self.assertNotIn("全部大运", dy)
+            self.assertIsInstance(dy["当前大运"], dict)
+
+    def test_timeline_reading_not_repetitive(self):
+        """四个时间单元的判语不得整句复读——那是堆料不是深度。"""
+        for r in self.people:
+            dy = r["deep"].get("dayun")
+            if not dy or not dy.get("可用"):
+                continue
+            texts = [dy["当前大运"]["解读"]] + [u["解读"] for u in dy["未来三年"]]
+            clauses = [c for t in texts for c in t.rstrip("。").split("；")]
+            dup = [c for c in set(clauses)
+                   if clauses.count(c) > 1 and len(c) > 18]
+            self.assertFalse(dup, f"{r['name']} 出现整句复读：{dup}")
+            self.assertLess(sum(len(t) for t in texts), 600,
+                            f"{r['name']} 时间轴判语超长，违反输出纪律")
+
+    def test_unstarted_luck_is_declared_not_faked(self):
+        """未交运者须如实标注，不得假装已行某步大运。"""
+        from deep_analysis import build_dayun_timeline
+        person = {"bazi": ["庚午", "辛巳", "乙酉", "癸未"], "_birth_year": 2025}
+        ys = {"用神": "水", "喜神": ["水", "木"], "忌神": ["金", "土", "火"]}
+        dy = build_dayun_timeline(person, "男", 2026,
+                                  since_jieling=14.5, to_next_jieling=16.7,
+                                  yongshen=ys)
+        self.assertEqual(dy["当前大运"]["状态"], "未起运")
+        self.assertEqual(dy["当前大运"]["第几步"], 0)
+        self.assertEqual(dy["当前大运"]["干支"], "辛巳", "未起运应行月柱余气")
+
+    def test_timeline_absent_rather_than_wrong(self):
+        """缺性别或节令时刻时整块略去，不得给出错值。"""
+        from deep_analysis import build_deep_analysis
+        person = {"bazi": ["庚午", "辛巳", "乙酉", "癸未"], "_birth_year": 1990}
+        self.assertIsNone(build_deep_analysis(person, 14.5)["dayun"],
+                          "缺性别时不应产出大运")
+        d = build_deep_analysis(person, 14.5, gender="男",
+                                since_jieling=None, to_next_jieling=None)
+        self.assertIsNone(d["dayun"], "节令距离全缺时不应产出大运")
+
+    def test_he_zhong_dai_xing_not_collapsed(self):
+        """巳申一类既合又刑者须并列标注，只取其一会丢失事象。"""
+        from deep_analysis import _zhi_interactions
+        got = _zhi_interactions("申", [("时支", "巳")])
+        self.assertTrue(any("合" in x and "刑" in x for x in got),
+                        f"巳申应标为合中带刑，实得 {got}")
+
+    def test_no_crash_across_wide_date_range(self):
+        from fortune_calc import analyze_person
+        import random
+        random.seed(20260806)
+        for _ in range(60):
+            y = 1940 + random.randint(0, 70)
+            spec = {"name": "测试", "gender": random.choice(["男", "女"]),
+                    "solar_date": f"{y}-{random.randint(1,12):02d}-{random.randint(1,28):02d}",
+                    "birth_time": f"{random.randint(0,23):02d}:00",
+                    "birth_city": "北京"}
+            r = analyze_person(spec)
+            self.assertIsNotNone(r.get("deep"), f"{spec} 深层分析失败")
+            ys = r["deep"]["yongshen"]
+            flat = ys["喜神"] + ys["忌神"] + ys["仇神"] + ys["闲神"]
+            self.assertEqual(set(flat), self.WX)
+            self.assertEqual(len(flat), len(set(flat)))
+
 
 def generate_report():
     """生成文字测试报告，方便记录交叉验证结果。"""
