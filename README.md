@@ -8,7 +8,7 @@ An all-in-one Agent Skill for traditional Chinese fortune analysis. Input birth 
 
 遵循 [Agent Skills 开放标准](https://agentskills.io)，兼容 Claude Code、Cursor、GitHub Copilot、Codex、Windsurf、Gemini CLI、Perplexity Computer 等 30+ AI Agent 平台。
 
-[🛠️ Coze 技能商店](https://www.coze.cn/skills?skill_share_pid=7629277828386947078) · [📦 npx 安装](#安装--install) · [📜 Agent Skills 标准](https://agentskills.io)
+[🛠️ Coze 技能商店](https://www.coze.cn/skills?skill_share_pid=7629277828386947078) · [📦 npx 安装](#安装--install) · [📜 Agent Skills 标准](https://agentskills.io) · [🐋 Built with OrcaRouter](https://www.orcarouter.ai/ref/ref_c65a38315ebd6ec0e4a0)
 
 [![Validate](https://github.com/Ficere/tianji/actions/workflows/validate.yml/badge.svg)](https://github.com/Ficere/tianji/actions/workflows/validate.yml)
 [![Publish](https://github.com/Ficere/tianji/actions/workflows/publish.yml/badge.svg)](https://github.com/Ficere/tianji/actions/workflows/publish.yml)
