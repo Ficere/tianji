@@ -1,3 +1,5 @@
+
+
 # 🔮 天机 / Tianji
 
 一站式命理测算 Agent Skill —— 输入出生日期和姓名，自动完成八字五行、袁天罡称骨、紫微斗数、西洋星座、三才五格姓名测算；多人时自动合盘评分。
@@ -368,7 +370,6 @@ tianji/
 | [agentskill.sh](https://agentskill.sh) | 社区目录 | `/learn @Ficere/tianji` |
 | [skills.sh](https://skills.sh) | 多平台索引 | `npx skills add Ficere/tianji` |
 | [Smithery](https://smithery.ai) | MCP 大市场 | Web UI 一键安装 |
-| [Coze 技能商店](https://www.coze.cn/skills?skill_share_pid=7629277828386947078) | 字节 Coze | Web UI「获取」 |
 
 发布流程与凭证配置见 [.github/PUBLISHING.md](.github/PUBLISHING.md)。
 
