@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-天机 · 综合命理测算计算脚本 v6.0
+天机 · 综合命理测算计算脚本 v8.3
 支持：八字五行、四柱自动计算、袁天罡称骨、紫微排盘（14主星+四化+大限）、
       西洋星座（太阳/月亮/上升）、三才五格姓名测算、多人合盘评分
 
-v6.0 新增：
+主要能力：
   - P1-A: 星座精确化 —— 用太阳黄经精确判断太阳星座，消除固定边界错判
-  - P1-B: 紫微14主星安星 —— 紫微系+天府系完整落宫，六吉六煞辅星
+  - P1-B: 紫微14主星安星 —— 紫微系+天府系完整落宫，12颗常用辅星
   - P2-A: 月亮星座 —— Meeus简化月球黄经，边界±3°时给出提示
   - P2-B: 四化飞星 —— 按年干安化禄/化权/化科/化忌；大限推算序列
   - P2-C: 上升星座 —— 基于出生地经纬度+恒星时计算上升点（用户选填城市）
@@ -739,15 +739,15 @@ _RISING_SIGN_KEYWORDS = {
 }
 
 
-def get_zodiac_precise(year, month, day, hour=12, minute=0):
+def get_zodiac_precise(year, month, day, hour=12, minute=0, tz_offset_hours=8.0):
     """
     P1-A: 使用太阳黄经精确判断太阳星座。
     消除固定月/日边界的错判（边界附近生日每年切换时刻不同）。
     返回: (星座名, 星座信息dict, 黄经度数, 是否边界附近)
     """
     jd = gregorian_to_jd(year, month, day, hour, minute)
-    # 北京时间转UT（减8小时）
-    jd_ut = jd - 8.0 / 24.0
+    # 出生地当地钟表时间转 UT。默认 +8 保持中国用户的向后兼容行为。
+    jd_ut = jd - tz_offset_hours / 24.0
     lon = _solar_longitude(jd_ut)
     sign_idx = int(lon // 30) % 12
     degree_in_sign = lon % 30
@@ -833,14 +833,14 @@ def _moon_longitude(jd_ut):
     return moon_lon
 
 
-def get_moon_sign(year, month, day, hour=12, minute=0):
+def get_moon_sign(year, month, day, hour=12, minute=0, tz_offset_hours=8.0):
     """
     P2-A: 计算月亮星座。
     返回: (星座名, 星座内度数, 是否边界附近, 月球黄经)
     边界附近（±3°）时建议提示"建议用专业软件确认"。
     """
     jd = gregorian_to_jd(year, month, day, hour, minute)
-    jd_ut = jd - 8.0 / 24.0
+    jd_ut = jd - tz_offset_hours / 24.0
     lon = _moon_longitude(jd_ut)
     sign_idx = int(lon // 30) % 12
     degree_in_sign = lon % 30
@@ -886,7 +886,8 @@ CITY_COORDS = _load_city_coords()
 try:
     from timezonefinder import TimezoneFinder as _TimezoneFinder
     _TF_INSTANCE = _TimezoneFinder()
-except ImportError:
+except Exception:
+    # 包缺失、数据文件不兼容或初始化失败时都安全降级到经度估算。
     _TF_INSTANCE = None
 
 # pytz：离线时区→UTC偏移查询，正确处理历史时区变更和夏令时（可选依赖）
@@ -958,7 +959,7 @@ def _is_china_region(lat, lon):
     return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
 
 
-def get_timezone_offset_hours(lat, lon, year=2000, month=1, day=1):
+def get_timezone_offset_hours(lat, lon, year=2000, month=1, day=1, hour=12, minute=0):
     """
     根据经纬度+日期，离线查询当地标准时区相对UTC的偏移小时数。
     使用 timezonefinder 定位 IANA 时区名，再用 pytz 结合具体日期计算偏移
@@ -979,7 +980,7 @@ def get_timezone_offset_hours(lat, lon, year=2000, month=1, day=1):
             tz_name = _TF_INSTANCE.timezone_at(lat=lat, lng=lon)
             if tz_name:
                 tz = _pytz.timezone(tz_name)
-                naive_dt = datetime.datetime(year, month, day, 12, 0)
+                naive_dt = datetime.datetime(year, month, day, hour, minute)
                 localized = tz.localize(naive_dt)
                 offset_hours = localized.utcoffset().total_seconds() / 3600.0
                 return offset_hours, tz_name, False
@@ -1015,7 +1016,9 @@ def calc_true_solar_time(year, month, day, hour, minute, lat, lon_deg,
       }
     """
     if tz_offset_hours is None:
-        tz_offset_hours, tz_name, tz_estimated = get_timezone_offset_hours(lat, lon_deg, year, month, day)
+        tz_offset_hours, tz_name, tz_estimated = get_timezone_offset_hours(
+            lat, lon_deg, year, month, day, hour, minute
+        )
     else:
         tz_name, tz_estimated = None, False
 
@@ -1081,7 +1084,9 @@ def calc_ascendant(year, month, day, hour, minute, lat, lon_deg, tz_offset_hours
     返回: (上升星座名, 上升黄经度数, 是否边界附近)
     """
     if tz_offset_hours is None:
-        tz_offset_hours, _tz_name, _est = get_timezone_offset_hours(lat, lon_deg, year, month, day)
+        tz_offset_hours, _tz_name, _est = get_timezone_offset_hours(
+            lat, lon_deg, year, month, day, hour, minute
+        )
 
     jd = gregorian_to_jd(year, month, day, hour, minute)
     jd_ut = jd - tz_offset_hours / 24.0  # 出生地标准时间→UT
@@ -1123,7 +1128,9 @@ def get_ascendant_by_city(year, month, day, hour, minute, city):
     lat, lon_deg, resolved_name = parse_city_or_coords(city)
     if lat is None:
         return None, None, None
-    tz_offset_hours, _tz_name, _est = get_timezone_offset_hours(lat, lon_deg, year, month, day)
+    tz_offset_hours, _tz_name, _est = get_timezone_offset_hours(
+        lat, lon_deg, year, month, day, hour, minute
+    )
     return calc_ascendant(year, month, day, hour, minute, lat, lon_deg, tz_offset_hours)
 
 
@@ -1140,7 +1147,9 @@ def get_ascendant_full(year, month, day, hour, minute, city):
     if lat is None:
         return {"error": f"城市「{city}」无法识别，且不是合法的「纬度,经度」格式"}
 
-    tz_offset_hours, tz_name, tz_estimated = get_timezone_offset_hours(lat, lon_deg, year, month, day)
+    tz_offset_hours, tz_name, tz_estimated = get_timezone_offset_hours(
+        lat, lon_deg, year, month, day, hour, minute
+    )
     sign, asc_lon, near_boundary = calc_ascendant(year, month, day, hour, minute, lat, lon_deg, tz_offset_hours)
     tst = calc_true_solar_time(year, month, day, hour, minute, lat, lon_deg, tz_offset_hours=tz_offset_hours)
 
@@ -1283,7 +1292,7 @@ def _place_tianfu_system(ziwei_idx):
 
 def _place_auxiliary_stars(year_gan, year_zhi, lunar_month, lunar_day, hour_float, gender):
     """
-    安六吉星、文昌文曲：基于出生年支/月/日/时。
+    安常用辅星：基于出生年干支/月/日/时。
     返回 {星名: 地支索引} 字典。
     """
     result = {}
@@ -1357,6 +1366,16 @@ def _place_auxiliary_stars(year_gan, year_zhi, lunar_month, lunar_day, hour_floa
     }
     base2 = _lingxing_base.get(year_zhi, 10)
     result["铃星"] = (base2 + hour_idx) % 12
+
+    # 天马：寅午戌在申、申子辰在寅、巳酉丑在亥、亥卯未在巳。
+    # 该规则与 iztro 2.5.1 的可复现排盘结果交叉核对。
+    _tianma_map = {
+        "寅": 8, "午": 8, "戌": 8,
+        "申": 2, "子": 2, "辰": 2,
+        "巳": 11, "酉": 11, "丑": 11,
+        "亥": 5, "卯": 5, "未": 5,
+    }
+    result["天马"] = _tianma_map[year_zhi]
 
     return result
 
@@ -1488,7 +1507,7 @@ def identify_ziwei_patterns(star_map, ming_gong_idx, gong_names):
 def calc_ziwei_full(year_gan, year_zhi, lunar_month, lunar_day, hour, gender, ming_gong_idx=None):
     """
     P1-B: 完整紫微斗数排盘。
-    包含：命宫/身宫、14主星安星、六吉六煞、四化飞星、大限序列、格局识别。
+    包含：命宫/身宫、14主星安星、12颗常用辅星、四化飞星、大限序列、格局识别。
 
     已知流派分歧（均为有意选择，非缺陷）：
       1. 晚子时（23:00–24:00）：本实现按**当日**取 lunar_day；
@@ -1786,6 +1805,16 @@ def analyze_person(member):
     solar_parts = solar_date.split("-")
     s_year, s_month, s_day = int(solar_parts[0]), int(solar_parts[1]), int(solar_parts[2])
 
+    # 西洋占星的天体位置必须把当地出生时间换算为 UT。城市缺失或无法
+    # 解析时沿用中国用户历史默认值 UTC+8，并由上升星座模块给出城市告警。
+    astro_tz_offset = 8.0
+    if birth_city:
+        _lat, _lon, _resolved_city = parse_city_or_coords(birth_city)
+        if _lat is not None:
+            astro_tz_offset, _tz_name, _tz_estimated = get_timezone_offset_hours(
+                _lat, _lon, s_year, s_month, s_day, s_hour, s_minute
+            )
+
     # 自动计算完整四柱
     computed = calc_four_pillars(s_year, s_month, s_day, s_hour, s_minute)
 
@@ -1839,13 +1868,13 @@ def analyze_person(member):
 
     # P1-A: 精确太阳星座
     sun_sign, zodiac_info, sun_lon, sun_near_boundary = get_zodiac_precise(
-        s_year, s_month, s_day, s_hour, s_minute
+        s_year, s_month, s_day, s_hour, s_minute, astro_tz_offset
     )
     zodiac_boundary_note = "⚠️ 太阳处于星座边界附近，建议用专业软件确认" if sun_near_boundary else ""
 
     # P2-A: 月亮星座
     moon_sign, moon_deg_in_sign, moon_near_boundary, moon_lon = get_moon_sign(
-        s_year, s_month, s_day, s_hour, s_minute
+        s_year, s_month, s_day, s_hour, s_minute, astro_tz_offset
     )
     moon_boundary_note = "⚠️ 月亮处于星座边界附近（±3°），建议用专业软件确认" if moon_near_boundary else ""
 
@@ -1899,32 +1928,32 @@ def analyze_person(member):
     wuge_result = None
     # surname_len 省略时交由 name_wuge_calc 按复姓表自动识别（欧阳/司马/诸葛等）
     surname_len = member.get("surname_len")
-    try:
-        import sys, os
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from name_wuge_calc import calc_wuge
-        wuge_result = calc_wuge(name, surname_len)
-        if "error" in wuge_result:
-            # 未提供姓名属正常场景（合盘时姓名项自动降为不计分），不刷警告
-            if name:
-                print(f"⚠️ {name}: 三才五格计算失败 - {wuge_result['error']}", file=sys.stderr)
-                warnings.append({
-                    "code": "WUGE_FAILED",
-                    "field": "wuge",
-                    "severity": "low",
-                    "message": f"三才五格计算失败：{wuge_result['error']}。姓名相关分析与合盘姓名项将不计分。",
-                })
-            wuge_result = None
-    except ImportError:
-        pass
-    except Exception as e:
-        print(f"⚠️ {name}: 三才五格计算异常 - {e}", file=sys.stderr)
-        warnings.append({
-            "code": "WUGE_ERROR",
-            "field": "wuge",
-            "severity": "low",
-            "message": f"三才五格计算异常：{e}。姓名相关分析与合盘姓名项将不计分。",
-        })
+    if not member.get("name_is_alias", False):
+        try:
+            import sys, os
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from name_wuge_calc import calc_wuge
+            wuge_result = calc_wuge(name, surname_len)
+            if "error" in wuge_result:
+                if name:
+                    print(f"⚠️ {name}: 三才五格计算失败 - {wuge_result['error']}", file=sys.stderr)
+                    warnings.append({
+                        "code": "WUGE_FAILED",
+                        "field": "wuge",
+                        "severity": "low",
+                        "message": f"三才五格计算失败：{wuge_result['error']}。姓名相关分析与合盘姓名项将不计分。",
+                    })
+                wuge_result = None
+        except ImportError:
+            pass
+        except Exception as e:
+            print(f"⚠️ {name}: 三才五格计算异常 - {e}", file=sys.stderr)
+            warnings.append({
+                "code": "WUGE_ERROR",
+                "field": "wuge",
+                "severity": "low",
+                "message": f"三才五格计算异常：{e}。姓名相关分析与合盘姓名项将不计分。",
+            })
 
     result = {
         "name": name,
@@ -1932,6 +1961,8 @@ def analyze_person(member):
         "solar_date": solar_date,
         "birth_time": birth_time,
         "birth_city": birth_city,
+        "mbti": member.get("mbti"),
+        "name_is_alias": member.get("name_is_alias", False),
         # 降级告警列表（空列表 = 全部模块按完整精度计算）
         "warnings": warnings,
         "bazi": bazi,
@@ -2302,13 +2333,19 @@ def analyze_synastry(members_results):
 # ============================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="综合命理测算 v6.0")
+    parser = argparse.ArgumentParser(description="天机综合命理确定性计算 v8.3")
     parser.add_argument("--input", required=True, help="输入JSON文件路径")
     parser.add_argument("--output", required=True, help="输出JSON文件路径")
     args = parser.parse_args()
 
     with open(args.input, "r", encoding="utf-8") as f:
         data = json.load(f)
+
+    try:
+        from reading_contract import ContractError, validate_input
+        validate_input(data)
+    except ContractError as exc:
+        parser.error(str(exc))
 
     results = []
     for member in data["members"]:
@@ -2337,7 +2374,8 @@ def main():
     output = {
         "members": results,
         "synastry": synastry,
-        "version": "8.0",
+        "version": "8.3",
+        "engine_version": "8.3.0",
     }
 
     with open(args.output, "w", encoding="utf-8") as f:

@@ -1,0 +1,28 @@
+{
+  "members": [
+    {
+      "name": "甲方",
+      "name_is_alias": true,
+      "gender": "男",
+      "solar_date": "1990-05-20",
+      "birth_time": "08:30",
+      "birth_city": "北京"
+    },
+    {
+      "name": "乙方",
+      "name_is_alias": true,
+      "gender": "女",
+      "solar_date": "1992-08-16",
+      "birth_time": "14:20",
+      "birth_city": "上海"
+    },
+    {
+      "name": "丙方",
+      "name_is_alias": true,
+      "gender": "男",
+      "solar_date": "1988-12-03",
+      "birth_time": "19:10",
+      "birth_city": "成都"
+    }
+  ]
+}

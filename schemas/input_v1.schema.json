@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tianji-input-v1",
+  "title": "天机计算输入 v1",
+  "type": "object",
+  "required": ["members"],
+  "additionalProperties": false,
+  "properties": {
+    "members": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["name", "gender", "solar_date", "birth_time"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "可使用代号；代号场景同时传 name_is_alias=true"
+          },
+          "name_is_alias": { "type": "boolean", "default": false },
+          "gender": { "type": "string", "enum": ["男", "女"] },
+          "solar_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+          "birth_time": { "type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$" },
+          "birth_city": { "type": "string", "maxLength": 120 },
+          "mbti": { "type": "string", "pattern": "^[EI][NS][TF][JP]$" },
+          "surname_len": { "type": "integer", "enum": [1, 2] },
+          "lunar": {
+            "type": "object",
+            "required": ["month", "day"],
+            "additionalProperties": false,
+            "properties": {
+              "month": { "type": "integer", "minimum": 1, "maximum": 12 },
+              "day": { "type": "integer", "minimum": 1, "maximum": 30 }
+            }
+          },
+          "bazi": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": { "type": "string", "minLength": 2, "maxLength": 2 }
+          }
+        }
+      }
+    }
+  }
+}

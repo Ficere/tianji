@@ -1,0 +1,104 @@
+name: Deploy Anonymous Demo to GitHub Pages
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - ".github/workflows/pages.yml"
+      - "requirements.txt"
+      - "schemas/**"
+      - "scripts/**"
+      - "tests/fixtures/input_three_people.json"
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "OrcaRouter 免费模型（限流时自动回退离线文案）"
+        required: true
+        default: "orcarouter/free"
+        type: choice
+        options:
+          - "orcarouter/free"
+          - "deepseek/deepseek-v4-flash-free"
+          - "deepseek/deepseek-v4-pro-free"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build privacy-safe static demo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install runtime dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build deterministic anonymous team report
+        run: |
+          python scripts/tianji.py \
+            --input tests/fixtures/input_three_people.json \
+            --output-dir build/pages-demo \
+            --title "匿名示例三人团队合盘（虚构数据）" \
+            --scenario 团队协作
+
+      - name: Enhance narrative through OrcaRouter
+        env:
+          ORCA_AK: ${{ secrets.ORCA_AK }}
+          ORCA_MODEL: ${{ inputs.model || 'orcarouter/free' }}
+        run: |
+          python scripts/orcarouter_narrative.py \
+            --reading build/pages-demo/reading.json \
+            --output build/pages-demo/reading.json \
+            --model "$ORCA_MODEL"
+
+      - name: Render static Pages artifact
+        run: |
+          mkdir -p build/pages-site
+          python scripts/generate_html.py \
+            --reading build/pages-demo/reading.json \
+            --output build/pages-site/index.html
+          touch build/pages-site/.nojekyll
+
+      - name: Verify no private team data or credential-shaped text is published
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          page = Path("build/pages-site/index.html").read_text(encoding="utf-8")
+          forbidden = [
+              "郭律均", "丁时之", "梁雅琳", "娄江溶", "刘宇航", "张军", "王译",
+              "ORCA_AK", "sk-orca-",
+          ]
+          leaked = [item for item in forbidden if item in page]
+          if leaked:
+              raise SystemExit("检测到禁止发布的内容：" + "、".join(leaked))
+          print("匿名 Demo 隐私检查通过")
+          PY
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/pages-site
+
+  deploy:
+    name: Deploy GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

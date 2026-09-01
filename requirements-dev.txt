@@ -1,0 +1,11 @@
+# 完整开发与交叉验证环境
+-r requirements.txt
+
+PyYAML>=6.0
+
+# 独立的公历/农历、八字与起运实现（MIT）。仅用于测试，不进入运行路径。
+lunar-python==1.4.8
+
+# Swiss Ephemeris 的当前维护 Python 绑定。仅用于太阳、月亮、上升点测试。
+# 注意其继承 Swiss Ephemeris 双许可证；不随天机运行包分发。
+pysweph==2.10.3.6

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "tianji-reading-v8",
-  "title": "天机命理解读 v8.0",
+  "$id": "tianji-reading-v8.3",
+  "title": "天机命理解读 v8.3",
   "type": "object",
   "required": ["meta", "persons"],
   "properties": {
@@ -12,7 +12,8 @@
       "properties": {
         "scene":              { "type": "string", "enum": ["personal", "synastry"] },
         "generated_at":       { "type": "string", "description": "ISO 8601，如 2026-06-24T22:00:00+08:00" },
-        "version":            { "type": "string", "const": "8.0" },
+        "version":            { "type": "string", "const": "8.3" },
+        "engine_version":     { "type": "string", "description": "生成该报告骨架的计算引擎版本，optional" },
         "title":              { "type": "string", "description": "报告标题，optional" },
         "overall_confidence": { "type": "number", "minimum": 0, "maximum": 5, "description": "全局置信度，0-5星，0.5步进" },
         "notes":              { "type": "string", "description": "免责声明或备注，optional" }
@@ -22,7 +23,7 @@
     "persons": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 2,
+      "maxItems": 8,
       "items": { "$ref": "#/$defs/PersonReading" }
     },
 
@@ -42,7 +43,7 @@
       "required": ["person_index", "bazi", "bone_weight", "ziwei", "western_astro", "personality_sketch", "confidence_table"],
       "properties": {
 
-        "person_index":   { "type": "integer", "enum": [1, 2] },
+        "person_index":   { "type": "integer", "minimum": 1, "maximum": 8 },
         "name":           { "type": "string", "description": "optional，无真实姓名时省略此 key" },
         "birth_datetime": { "type": "string", "description": "自然语言，如 '1994年4月15日 未时'" },
         "birth_city":     { "type": "string", "description": "optional，影响上升星座和真太阳时" },

@@ -15,6 +15,10 @@ zhdate>=0.1
 timezonefinder>=6.0
 pytz>=2023.3
 
+# reading.json 输入/输出契约校验。渲染前强制验证，避免字段漂移或
+# 非法数据静默进入 HTML 报告。
+jsonschema>=4.20
+
 # —— 可选 —— #
 # 更高精度的月亮星座计算。缺失时使用内置 Meeus Ch.47 近似算法（±1°）。
 # ephem>=4.1

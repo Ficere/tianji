@@ -12,6 +12,7 @@ An all-in-one Agent Skill for traditional Chinese fortune analysis. Input birth 
 
 [![Validate](https://github.com/Ficere/tianji/actions/workflows/validate.yml/badge.svg)](https://github.com/Ficere/tianji/actions/workflows/validate.yml)
 [![Publish](https://github.com/Ficere/tianji/actions/workflows/publish.yml/badge.svg)](https://github.com/Ficere/tianji/actions/workflows/publish.yml)
+[![Pages](https://github.com/Ficere/tianji/actions/workflows/pages.yml/badge.svg)](https://github.com/Ficere/tianji/actions/workflows/pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 <!-- 各平台一键安装命令 / Per-platform one-liners -->
@@ -96,27 +97,52 @@ git clone https://github.com/Ficere/tianji.git
 |------|------|
 | **八字五行** | 四柱全自动计算（天文算法精确节气）、五行分布、十神、纳音、藏干、日主旺衰 |
 | **袁天罡称骨** | 年月日时骨重查表、52 首歌诀、等级评定 |
-| **紫微斗数** | 命宫/身宫、十二宫、五行局、命主/身主、大运方向 |
-| **西洋星座** | 太阳星座、元素守护星、两人相位匹配 |
+| **紫微斗数** | 命宫/身宫、十二宫、五行局、14 主星、12 常用辅星、四化与大限 |
+| **西洋星座** | 太阳/月亮/上升三星；境外出生时间按当地时区换算 UT |
 | **三才五格** | 康熙字典笔画（48700+ 字）、天格/人格/地格/外格/总格、81 数理吉凶、三才生克配置、综合评分与评级 |
 | **合盘评分** | 五行互补 + 生肖关系 + 星座 + 日主生克 + 称骨 + 姓名合盘，100 分制综合评定 |
 
 ### 结构化输出与 HTML 报告 / Structured output & HTML report
 
-除自然语言报告外，本技能还输出一份受 JSON Schema 约束的 `reading.json`，并可一键渲染为可分享的静态 HTML 报告（无外部依赖，双击即开）：
+除自然语言报告外，本技能还输出受 JSON Schema 约束的 `reading.json`，并可一条命令完成输入校验、排盘、结构转换和静态 HTML 渲染：
 
 ```bash
-python scripts/generate_html.py --reading examples/example_personal.json --output report.html
+python scripts/tianji.py \
+  --input tests/fixtures/input_three_people.json \
+  --output-dir tianji-output \
+  --scenario 团队协作
 ```
 
+- `schemas/input_v1.schema.json` —— 1–8 人输入契约，严格校验日期、时间和未知字段
 - `schemas/reading_v8.schema.json` —— 解读结果的结构契约，CI 会校验所有 examples
+- `scripts/reading_contract.py` —— v8.0–v8.2 兼容迁移与统一验证入口
 - `prompts/` —— 叙事生成提示词（个人 / 合盘）
 - `examples/` —— 个人与合盘两份完整示例，可直接渲染预览
+
+### GitHub Pages 匿名 Demo + OrcaRouter
+
+仓库内置 `.github/workflows/pages.yml`，可用 GitHub Actions 构建并发布匿名、虚构数据的三人团队合盘页面。工作流先运行本地确定性计算，再用 OrcaRouter 免费模型润色合盘文字；模型不可用或返回 429 时，自动保留离线文案并继续部署。
+
+安全边界：
+
+- `ORCA_AK` 只在 Actions 的模型调用步骤中读取，不会注入浏览器 JavaScript，也不会进入 Pages 产物。
+- 发给模型的上下文不含姓名、生日、城市、性别和四柱，只保留 P1/P2/P3、派生特征与确定性分数。
+- 模型只能覆盖六个叙事字段，不能修改任何分数；模型输出会再次通过 `reading_v8` 契约校验和 HTML 转义。
+- Pages 发布的固定 Demo 使用 `tests/fixtures/input_three_people.json` 中的别名和虚构数据，不发布真实团队资料。
+
+首次启用：
+
+1. 在仓库 `Settings → Secrets and variables → Actions` 添加 `ORCA_AK`。
+2. 在 `Settings → Pages → Build and deployment` 中把 Source 设为 **GitHub Actions**。
+3. 打开 Actions 的 **Deploy Anonymous Demo to GitHub Pages**，点击 **Run workflow**。可选 `orcarouter/free` 或明确的 DeepSeek `-free` 模型。
+
+> GitHub Pages 是纯静态托管，Repository Secret 只能在 Actions 构建时使用。因此这个部署是“构建时生成的匿名报告”，不是让访客在页面中实时提交出生资料。如果以后需要实时交互，应增加带服务端密钥托管的 API，并另行设计鉴权、滥用控制与隐私同意。
 
 ### 版本要点 / Release highlights
 
 | 版本 | 要点 |
 |------|------|
+| **v8.3** | 统一输入/输出契约与一站式 CLI；支持 1–8 人报告；修复境外出生时间硬编码 UTC+8 与紫微漏算天马；HTML 全量转义；加入 lunar-python、Swiss Ephemeris、iztro 固定版本交叉验证 |
 | **v8.2** | 深层分析层 `deep`：人元司令藏干十神、刑冲合会、用神喜忌（含流派声明与置信度）、跨系统一致性检测。**纯计算层增强，报告篇幅与 v8.1 持平** |
 | **v8.1** | 合盘计分改为人对均值制（修复 5 人组可得 105 分的量纲缺陷）；补齐姓名合盘计分；schema 单一真源约束 |
 | **v8.0** | `reading.json` 结构化输出 + JSON Schema 约束 + 静态 HTML 报告渲染器 |
@@ -125,7 +151,7 @@ python scripts/generate_html.py --reading examples/example_personal.json --outpu
 | **v5.x** | 多场景合盘（情侣/亲子/团队/管理者）与三层叙事整合 |
 | **v4.x** | 四柱全自动计算（立春精确时刻 Meeus VSOP87 + 节气月柱 + JDN 日柱）；姓名综合评级与三才评级分离 |
 
-> 四柱算法已与独立实现（`lunar-python`）在多组边界用例上交叉校验，包含立春当日、跨年冬月等场景。
+> 交叉验证用于确认代码计算的一致性，不证明命理具有科学预测效度。四柱对照固定版本的 [`lunar-python`](https://github.com/6tail/lunar-python)，太阳/月亮/上升对照 [Swiss Ephemeris](https://github.com/aloistr/swisseph)，紫微离散排盘对照固定版本的 [`iztro`](https://github.com/SylarLong/iztro)。版本、样本和容差见 `references/validation-sources.md`。
 
 **关于 v8.2 的深层分析**：`analyze_person()` 返回值新增 `deep` 区块，内含用神喜忌、藏干十神、刑冲合会与跨系统一致性检测。
 设计原则是**只增加解读深度、不增加输出篇幅** —— schema 对 `overall_analysis`（≤260 字）等字段设有硬性长度上限，
@@ -229,7 +255,7 @@ python scripts/generate_html.py --reading examples/example_personal.json --outpu
 
 **输入**：张子安（男，1985-07-12 06:30，北京）+ 陈伟（男，1987-09-05 11:00，广州）+ 刘芳（女，1991-12-20 16:20，深圳）。
 
-**输出**：团体五行分布分析（火行显著不足）、三对甜齪关系检查（牛羊冲作为冲突点）、合盘总分 72/100 → “良好组合”，并给出分工建议。
+**输出**：团体五行分布分析（火行显著不足）、三对关系检查（牛羊冲作为冲突点）、合盘总分 72/100 → “良好组合”，并给出分工建议。
 
 ### 案例四：姓名五格单人测算
 
@@ -239,7 +265,7 @@ python scripts/generate_html.py --reading examples/example_personal.json --outpu
 
 ## 独立脚本 / Standalone Scripts
 
-三个脚本均可脱离 Agent 平台独立运行（Python 3.9+）。
+核心脚本均可脱离 Agent 平台独立运行（Python 3.10+）。
 
 ### 依赖安装 / Dependencies
 
@@ -251,14 +277,19 @@ pip install -r requirements.txt
 |------|--------|----------------|
 | `zhdate` | **必需** | 农历退化为「正月初一」，**称骨结果不可用** |
 | `timezonefinder` + `pytz` | 境外出生地必需 | 时区按经度粗略估算，遇夏令时/历史时区变更时上升星座可能偏差约 1 小时 |
-| `ephem` | 可选 | 使用内置 Meeus Ch.47 近似算法计算月亮星座（±1°） |
+| `jsonschema` | **必需** | 输入、reading 和 HTML 渲染会拒绝继续执行 |
 
 > 任何因依赖缺失而降级的结果，都会写入输出 JSON 的 `warnings` 字段（包含 `code` / `field` / `severity`），
 > 供调用方判断是否可信。`warnings: []` 才代表全部模块按完整精度计算。
 >
 > Any dependency-related degradation is reported in the `warnings` array of the output JSON — an empty array means full precision.
 
-**命理测算引擎：**
+**推荐的一站式入口：**
+```bash
+python scripts/tianji.py --input data.json --output-dir tianji-output
+```
+
+**只运行命理计算引擎：**
 ```bash
 python scripts/fortune_calc.py --input data.json --output result.json
 ```
@@ -279,7 +310,9 @@ python scripts/generate_html.py --reading reading.json --output report.html
 
 **运行测试：**
 ```bash
-python tests/test_suite.py
+pip install -r requirements-dev.txt
+npm ci
+python -m unittest discover -s tests -p 'test_*.py'
 ```
 
 <details>
@@ -334,12 +367,19 @@ python tests/test_suite.py
 tianji/
 ├── SKILL.md                           # 技能入口（Agent 自动读取）
 ├── requirements.txt                   # Python 依赖
+├── requirements-dev.txt               # 固定版本的第三方验证依赖
+├── package.json / package-lock.json    # iztro 测试依赖锁
 ├── scripts/
 │   ├── fortune_calc.py                # 命理测算引擎（八字/称骨/紫微/星座/合盘）
 │   ├── name_wuge_calc.py              # 三才五格姓名测算引擎（含复姓自动识别）
-│   └── generate_html.py               # reading.json → 静态 HTML 报告渲染器
+│   ├── reading_contract.py             # 输入/输出契约校验与旧版迁移
+│   ├── build_reading.py                # chart → schema-valid reading 骨架
+│   ├── orcarouter_narrative.py          # 脱敏叙事增强；失败自动离线回退
+│   ├── generate_html.py                # reading.json → 静态 HTML 报告渲染器
+│   └── tianji.py                       # 一站式流水线入口
 ├── schemas/
-│   └── reading_v8.schema.json         # 解读结果的 JSON Schema 契约
+│   ├── input_v1.schema.json           # 输入 JSON Schema 契约
+│   └── reading_v8.schema.json         # 解读结果 JSON Schema 契约
 ├── prompts/
 │   ├── reading_json_prompt.md         # 叙事生成提示词
 │   └── synastry_addendum.md           # 合盘场景补充提示词
@@ -347,7 +387,9 @@ tianji/
 │   ├── example_personal.json          # 个人报告示例（CI 校验）
 │   └── example_synastry.json          # 合盘报告示例（CI 校验）
 ├── tests/
-│   └── test_suite.py                  # 单元测试（CI 运行）
+│   ├── test_suite.py                  # 计算单元测试
+│   ├── test_contract_pipeline.py      # 契约、安全与多人端到端测试
+│   └── test_third_party.py            # 三个独立引擎交叉验证
 ├── references/
 │   ├── kangxi_strokes.json            # 康熙字典笔画查找表（48708 字）
 │   ├── city_coords.json               # 城市经纬度表（中国全境 + 全球主要城市）

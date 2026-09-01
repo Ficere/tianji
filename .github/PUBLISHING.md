@@ -23,8 +23,8 @@
 
 ```bash
 # 打 tag 即可触发发布
-git tag v4.1.0
-git push origin v4.1.0
+git tag v8.3.0
+git push origin v8.3.0
 ```
 
 `.github/workflows/publish.yml` 会：
@@ -54,8 +54,15 @@ targets: clawhub,agentskill
 | Secret Name | 获取方式 | 必需? |
 |-------------|----------|-------|
 | `CLAWHUB_TOKEN` | 访问 [clawhub.com](https://clawhub.com) 登录后在 Settings 生成 API Token | ClawHub 发布 |
+| `ORCA_AK` | 在 [OrcaRouter](https://www.orcarouter.ai/) 创建 API Key | GitHub Pages 匿名 Demo 的叙事增强；缺失时自动使用离线文案 |
 
 未设置 token 的平台会被 CI 自动跳过，不会中断发布流程。
+
+### GitHub Pages 匿名 Demo
+
+`.github/workflows/pages.yml` 与注册表发布相互独立。它只发布虚构别名数据，`ORCA_AK` 仅在 Actions 构建阶段调用 OrcaRouter；静态页面中不存在可供浏览器读取的密钥。
+
+首次部署前，在 **Settings → Pages → Build and deployment** 中将 Source 设为 **GitHub Actions**，然后手动运行 **Deploy Anonymous Demo to GitHub Pages**。免费模型限流、输出异常或 Secret 缺失都不会阻断部署，工作流会回退到确定性离线文案。
 
 ### 可选：一次性 Web 配置（提升体验）
 
@@ -87,9 +94,9 @@ CI 中已包含主动触发 webhook 的 fallback，即使未设置也能工作�
 
 ## 📦 版本号约定 / Versioning
 
-- Tag 格式：`vMAJOR.MINOR.PATCH`（例：`v4.1.0`）
+- Tag 格式：`vMAJOR.MINOR.PATCH`（例：`v8.3.0`）
 - CI 会自动从 tag 剥离 `v` 前缀写入 zip 文件名
-- 建议同步更新 `SKILL.md` 中 `metadata.version` 字段（当前为 `4.0`）
+- 建议同步更新 `SKILL.md` 中 `metadata.version` 字段（当前为 `8.3.0`）
 
 ## 🔍 发布后验证 / Verification
 

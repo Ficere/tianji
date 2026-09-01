@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-generate_html.py — 天机 v8.0 HTML 报告渲染器
+generate_html.py — 天机 v8.3 HTML 报告渲染器
 
 用法：
     python generate_html.py --reading reading.json [--chart chart.json] [--output tianji_report.html]
@@ -9,9 +9,12 @@ generate_html.py — 天机 v8.0 HTML 报告渲染器
 import json
 import math
 import argparse
+import html as html_lib
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
+
+from reading_contract import validate_reading
 
 # ════════════════════════════════════════════════════════
 # 常量：五行映射
@@ -37,11 +40,7 @@ def load_reading(path: str) -> dict:
         raise FileNotFoundError(f"reading.json 不存在：{path}")
     with open(p, encoding="utf-8") as f:
         data = json.load(f)
-    if data.get("meta", {}).get("version") != "8.0":
-        raise ValueError("reading.json 版本不符，需为 8.0")
-    if not data.get("persons"):
-        raise ValueError("reading.json 缺少 persons 字段")
-    return data
+    return validate_reading(data, normalize=True)
 
 
 def load_chart(path: Optional[str]) -> Optional[dict]:
@@ -1500,7 +1499,7 @@ def render_relation_matrix(persons: list, synastry: dict) -> str:
 
 
 def _extract_pair_names(raw_pair: str, names: list):
-    """从 '郭律均(戌)×娄江溶(卯)' 格式中提取两个姓名"""
+    """从 '成员甲(戌)×成员乙(卯)' 格式中提取两个姓名"""
     found = [nm for nm in names if nm in raw_pair]
     return (found[0], found[1]) if len(found) >= 2 else (None, None)
 
@@ -1605,12 +1604,15 @@ def build_synastry_page(ctx: dict) -> str:
     synastry["_p2_name"] = p2_name
     summary_line = synastry.get("compatibility_summary_line", "")
     title = meta.get("title", f"{p1_name} × {p2_name} 合盘")
+    hero_names = '<span class="synastry-x">×</span>'.join(
+        p.get("name", f"命主{i}") for i, p in enumerate(persons, start=1)
+    )
 
     # 合盘 hero
     hero_html = f"""
     <header class="hero-section synastry-hero">
       <div class="hero-inner">
-        <h1 class="hero-name synastry-title">{p1_name} <span class="synastry-x">×</span> {p2_name}</h1>
+        <h1 class="hero-name synastry-title">{hero_names}</h1>
         {"" if not summary_line else f'<p class="hero-quote synastry-quote">「{summary_line}」</p>'}
       </div>
     </header>"""
@@ -1635,13 +1637,12 @@ def build_synastry_page(ctx: dict) -> str:
       </div>
     </section>"""
 
-    # 双列对比
-    sum1 = render_person_summary(persons[0]) if persons else ""
-    sum2 = render_person_summary(persons[1]) if len(persons) > 1 else ""
+    # 多人概览；完整命盘仍在底部逐人展开。
+    comparison_cards = "".join(render_person_summary(person) for person in persons)
     comparison_html = f"""
     <section class="report-section" id="comparison">
-      <h2 class="section-title">命盘对比</h2>
-      <div class="comparison-grid">{sum1}{sum2}</div>
+      <h2 class="section-title">命盘概览</h2>
+      <div class="comparison-grid">{comparison_cards}</div>
     </section>"""
 
     # 综合评分 + 总评 + 场景建议
@@ -2291,9 +2292,25 @@ document.addEventListener('DOMContentLoaded', () => {
 """
 
 
+def _escape_strings(value):
+    """递归转义所有外部字符串，数值与容器结构保持不变。"""
+    if isinstance(value, str):
+        return html_lib.escape(value, quote=True)
+    if isinstance(value, list):
+        return [_escape_strings(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_escape_strings(item) for item in value)
+    if isinstance(value, dict):
+        return {key: _escape_strings(item) for key, item in value.items()}
+    return value
+
+
 def render_html(ctx: dict) -> str:
+    # 在渲染前再次校验，覆盖 Python API 直接调用而非 load_reading() 的场景。
+    ctx = _escape_strings(validate_reading(ctx, normalize=True))
     meta = ctx.get("meta", {})
     title = meta.get("title", "天机命理报告")
+    notes = meta.get("notes", "")
     generated_at = meta.get("generated_at", datetime.now().isoformat())
     try:
         dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
@@ -2320,6 +2337,7 @@ def render_html(ctx: dict) -> str:
 {body_content}
 <footer class="page-footer">
   天机命理报告 · 生成时间 {gen_str} · 仅供参考，命理学并非精确科学
+  {"" if not notes else f"<br>{notes}"}
 </footer>
 </div>
 <script>{_JS}</script>
@@ -2332,7 +2350,7 @@ def render_html(ctx: dict) -> str:
 # ════════════════════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(description="天机 v8.0 HTML 报告渲染器")
+    parser = argparse.ArgumentParser(description="天机 v8.3 HTML 报告渲染器")
     parser.add_argument("--reading", default="reading.json",        help="reading.json 路径")
     parser.add_argument("--chart",   default="chart.json",          help="chart.json 路径（可选）")
     parser.add_argument("--output",  default="tianji_report.html",  help="输出 HTML 路径")

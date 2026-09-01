@@ -27,11 +27,10 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyyaml jsonschema
-          # 测试期专用：lunar-python 是与本仓库完全独立的第三方排盘实现，
-          # 仅用于交叉验证四柱与起运，不进 requirements.txt（非运行时依赖）。
-          pip install lunar-python
+          pip install -r requirements-dev.txt
+
+      - name: Install pinned Node validation dependency
+        run: npm ci --ignore-scripts
 
       - name: Assert runtime dependencies are importable
         # 防止 CI 在依赖缺失的降级路径上「假绿灯」通过
@@ -60,8 +59,8 @@ jobs:
           print(f"✅ SKILL.md 验证通过: name={meta['name']}, version={meta.get('metadata', {}).get('version', 'N/A')}")
           PY
 
-      - name: Run unit test suite
-        run: python tests/test_suite.py
+      - name: Run complete test suite
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Validate examples against reading schema
         run: |
@@ -295,6 +294,16 @@ jobs:
           python scripts/generate_html.py --reading examples/example_personal.json --output /tmp/r1.html
           python scripts/generate_html.py --reading examples/example_synastry.json --output /tmp/r2.html
           test -s /tmp/r1.html && test -s /tmp/r2.html && echo "✅ generate_html.py 渲染正常"
+
+      - name: Smoke test one-command pipeline with three people
+        run: |
+          python scripts/tianji.py \
+            --input tests/fixtures/input_three_people.json \
+            --output-dir /tmp/tianji-output \
+            --scenario 团队协作
+          python scripts/reading_contract.py /tmp/tianji-output/reading.json
+          test -s /tmp/tianji-output/chart.json
+          test -s /tmp/tianji-output/report.html
 
       - name: Validate with gh skill (agentskills.io spec)
         continue-on-error: true

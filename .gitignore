@@ -8,3 +8,6 @@ team_*.md
 
 __pycache__/
 *.py[cod]
+node_modules/
+tianji-output/
+build/

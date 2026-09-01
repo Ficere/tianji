@@ -2,7 +2,7 @@
   "meta": {
     "scene": "synastry",
     "generated_at": "2026-01-01T10:00:00+08:00",
-    "version": "8.0",
+    "version": "8.3",
     "title": "林夏 × 沈逸舟 合盘",
     "overall_confidence": 4.0
   },
@@ -15,23 +15,51 @@
       "gender": "female",
       "mbti": "ENFP",
       "bazi": {
-        "pillars": { "year": "癸酉", "month": "甲午", "day": "丁卯", "hour": "丙午" },
+        "pillars": {
+          "year": "癸酉",
+          "month": "甲午",
+          "day": "丁卯",
+          "hour": "丙午"
+        },
         "day_master": "丁火",
         "strength": "旺",
         "wuxing_distribution": {
-          "scores": { "wood": 30, "fire": 35, "earth": 8, "metal": 12, "water": 15 },
-          "strong": ["木", "火"],
-          "weak": ["土", "金"],
+          "scores": {
+            "wood": 30,
+            "fire": 35,
+            "earth": 8,
+            "metal": 12,
+            "water": 15
+          },
+          "strong": [
+            "木",
+            "火"
+          ],
+          "weak": [
+            "土",
+            "金"
+          ],
           "absent": []
         },
         "ten_gods_summary": "食神伤官并透，比劫旺，官星极弱。表达欲强烈，创造力旺盛，但自律性和执行落地需借助外力。",
         "overall_analysis": "丁火日主生于午月，木火旺盛，格局倾向食伤生财。日主极旺而官星微弱，不适合走传统仕途，适合创意、表达、艺术、教育类领域。用神取土收敛火性，喜水调候。",
-        "lucky_elements": ["土", "水"],
-        "unlucky_elements": ["木", "火"]
+        "lucky_elements": [
+          "土",
+          "水"
+        ],
+        "unlucky_elements": [
+          "木",
+          "火"
+        ]
       },
       "bone_weight": {
         "total_liang": 4.55,
-        "breakdown": { "year": 1.1, "month": 1.15, "day": 1.2, "hour": 1.1 },
+        "breakdown": {
+          "year": 1.1,
+          "month": 1.15,
+          "day": 1.2,
+          "hour": 1.1
+        },
         "rating": "中上等命格",
         "poem": "四两五钱身灵巧，半凭才情半凭缘。中岁之后渐丰盈，晚来无忧度流年。",
         "interpretation": "此命格中上，青年须主动耕耘，才能方可变现。三十五岁后运势明显抬升，贵人缘较好，人脉是关键资产。"
@@ -57,9 +85,18 @@
         "key_aspects": "太阳与月亮形成90°刑相，理性表达与内在情感需求之间有结构性张力，决策时常常理智说一套、情绪走另一套。"
       },
       "name_analysis": {
-        "strokes_breakdown": { "林": 8, "夏": 10 },
+        "strokes_breakdown": {
+          "林": 8,
+          "夏": 10
+        },
         "sancai": "金水木",
-        "wuge_scores": { "tianGe": 9, "renGe": 18, "diGe": 11, "waiGe": 2, "zongGe": 18 },
+        "wuge_scores": {
+          "tianGe": 9,
+          "renGe": 18,
+          "diGe": 11,
+          "waiGe": 2,
+          "zongGe": 18
+        },
         "overall_rating": "中吉",
         "interpretation": "人格数18，有进取心与领导欲，适合在自主空间中发展。总格18同人格，聚焦感强。三才金水木，相生顺畅，整体配置流通良好。"
       },
@@ -87,23 +124,51 @@
       "gender": "male",
       "mbti": "INFJ",
       "bazi": {
-        "pillars": { "year": "辛未", "month": "甲子", "day": "壬戌", "hour": "甲卯" },
+        "pillars": {
+          "year": "辛未",
+          "month": "甲子",
+          "day": "壬戌",
+          "hour": "甲卯"
+        },
         "day_master": "壬水",
         "strength": "弱",
         "wuxing_distribution": {
-          "scores": { "wood": 30, "fire": 5, "earth": 28, "metal": 12, "water": 25 },
-          "strong": ["木", "土"],
-          "weak": ["火", "金"],
+          "scores": {
+            "wood": 30,
+            "fire": 5,
+            "earth": 28,
+            "metal": 12,
+            "water": 25
+          },
+          "strong": [
+            "木",
+            "土"
+          ],
+          "weak": [
+            "火",
+            "金"
+          ],
           "absent": []
         },
         "ten_gods_summary": "食伤透出，印星护身，官星极弱。思维灵活，输出能力强，但责任心与外部约束相对薄弱，需主动建立自我驱动机制。",
         "overall_analysis": "壬水生于子月，水旺有根，木多泄秀，格局倾向食伤吐秀。身弱木旺，喜金护水，忌木火过旺继续消耗。适合文思、策划、研究类工作，执行落地需借助团队补位。",
-        "lucky_elements": ["金", "水"],
-        "unlucky_elements": ["木", "火"]
+        "lucky_elements": [
+          "金",
+          "水"
+        ],
+        "unlucky_elements": [
+          "木",
+          "火"
+        ]
       },
       "bone_weight": {
         "total_liang": 5.1,
-        "breakdown": { "year": 1.2, "month": 1.3, "day": 1.35, "hour": 1.25 },
+        "breakdown": {
+          "year": 1.2,
+          "month": 1.3,
+          "day": 1.35,
+          "hour": 1.25
+        },
         "rating": "中上等命格",
         "poem": "五两一钱逢吉数，半生谋略半生悟。中年之后运渐开，晚景平和近自然。",
         "interpretation": "此命格中上，贵人缘良好，需主动借力而非独行。中年后运势抬升，事业与精神层面均有收获。"
@@ -129,9 +194,19 @@
         "key_aspects": "太阳与月亮形成60°六分相，意志方向与情感需求之间有自然协调感，决策时理智与情绪较少内耗。"
       },
       "name_analysis": {
-        "strokes_breakdown": { "沈": 7, "逸": 11, "舟": 6 },
+        "strokes_breakdown": {
+          "沈": 7,
+          "逸": 11,
+          "舟": 6
+        },
         "sancai": "土木水",
-        "wuge_scores": { "tianGe": 8, "renGe": 18, "diGe": 17, "waiGe": 7, "zongGe": 24 },
+        "wuge_scores": {
+          "tianGe": 8,
+          "renGe": 18,
+          "diGe": 17,
+          "waiGe": 7,
+          "zongGe": 24
+        },
         "overall_rating": "吉",
         "interpretation": "人格数18，进取有力；总格24，为富贵之象，适合走专业深耕路线。三才土木水，相生顺畅，整体配置流通良好，利于文思与创作发展。"
       },
@@ -168,13 +243,34 @@
     },
     "composite_scores": {
       "total": 81,
-      "wuxing_balance":  { "score": 16, "comment": "木火水土互补，五行合并后分布较均衡" },
-      "wuxing_complete": { "score": 5,  "comment": "合并后五行俱全" },
-      "shengxiao":       { "score": 14, "comment": "酉与未六合，和谐相处" },
-      "xingzuo":         { "score": 8,  "comment": "太阳180°对冲，强吸引但有张力" },
-      "riZhu":           { "score": 18, "comment": "丁壬天干合，日主关系极为亲密" },
-      "chenggu":         { "score": 15, "comment": "骨重相差0.55两，差异可接受" },
-      "xingming":        { "score": 5,  "comment": "三才配置相生，姓名合盘良好" }
+      "wuxing_balance": {
+        "score": 16,
+        "comment": "木火水土互补，五行合并后分布较均衡"
+      },
+      "wuxing_complete": {
+        "score": 5,
+        "comment": "合并后五行俱全"
+      },
+      "shengxiao": {
+        "score": 14,
+        "comment": "酉与未六合，和谐相处"
+      },
+      "xingzuo": {
+        "score": 8,
+        "comment": "太阳180°对冲，强吸引但有张力"
+      },
+      "riZhu": {
+        "score": 18,
+        "comment": "丁壬天干合，日主关系极为亲密"
+      },
+      "chenggu": {
+        "score": 15,
+        "comment": "骨重相差0.55两，差异可接受"
+      },
+      "xingming": {
+        "score": 5,
+        "comment": "三才配置相生，姓名合盘良好"
+      }
     },
     "overall_comment": "林夏与沈逸舟的组合，是一对典型的「磁场对撞型」——丁壬天干合带来内核层的深层吸引，两人在精神世界的丰富度上势均力敌，有能力进行真正深度的灵魂对话。太阳对冲带来的张力不是障碍，而是这段关系的活力来源：她的热情与发散不断激活他的可能性，他的深度与系统给她提供了真正的接地感。外在摩擦主要来自节奏差异——她希望更多互动回应，他需要足够的独处空间。这对组合的核心挑战是：建立一套双方都认可的「能量边界协议」——而不是让一方持续迁就另一方。",
     "scenario_advice": [

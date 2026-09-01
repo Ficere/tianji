@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-天机 v6.0 自动化测试套件
+天机 v8.3 自动化测试套件
 
 覆盖：
   - 四柱八字计算（6条，对照卜易居/chinesebazi.com）
@@ -377,6 +377,17 @@ class TestZiweiStars(unittest.TestCase):
                 self.assertEqual(aux["火星"], (huo[zhi] + hi) % 12, f"{zhi}年{hour}时火星错")
                 self.assertEqual(aux["铃星"], (ling[zhi] + hi) % 12, f"{zhi}年{hour}时铃星错")
 
+    def test_tianma_by_year_branch_group(self):
+        expected = {
+            "寅": 8, "午": 8, "戌": 8,
+            "申": 2, "子": 2, "辰": 2,
+            "巳": 11, "酉": 11, "丑": 11,
+            "亥": 5, "卯": 5, "未": 5,
+        }
+        for zhi, palace in expected.items():
+            aux = _place_auxiliary_stars("甲", zhi, 1, 1, 12, "男")
+            self.assertEqual(aux["天马"], palace, f"{zhi}年天马错")
+
     def test_fourteen_main_stars_occupy_distinct_pattern(self):
         """结构不变量：14 主星恒分布于 12 宫，且紫府两系各自连续"""
         for ju in (2, 3, 4, 5, 6):
@@ -401,7 +412,7 @@ class TestZiweiStars(unittest.TestCase):
     def test_auxiliary_stars_exist(self):
         """验证辅星安星结果存在"""
         aux_stars = ["文昌", "文曲", "左辅", "右弼", "天魁", "天钺",
-                     "禄存", "擎羊", "陀罗", "火星", "铃星"]
+                     "禄存", "擎羊", "陀罗", "火星", "铃星", "天马"]
         result = calc_ziwei_full("庚", "午", 4, 26, 8.5, "男")
         for star in aux_stars:
             self.assertIn(star, result["辅星落宫"],
