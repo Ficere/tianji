@@ -69,6 +69,13 @@ class OrcaRouterNarrativeTests(unittest.TestCase):
         parsed = _parse_json_content("```json\n" + json.dumps(NARRATIVE, ensure_ascii=False) + "\n```")
         self.assertEqual(parsed, NARRATIVE)
 
+    def test_parser_extracts_json_after_reasoning_or_prefix(self):
+        content = (
+            "<think>先分析，但这一段不应进入结果。</think>\n"
+            "以下是 JSON：\n" + json.dumps(NARRATIVE, ensure_ascii=False) + "\n完成"
+        )
+        self.assertEqual(_parse_json_content(content), NARRATIVE)
+
     def test_missing_secret_preserves_offline_reading(self):
         with tempfile.TemporaryDirectory() as tmp:
             reading = self._reading(tmp)

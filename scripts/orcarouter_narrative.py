@@ -119,10 +119,24 @@ def _parse_json_content(content: str) -> dict[str, str]:
     fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", content, flags=re.DOTALL | re.IGNORECASE)
     if fenced:
         content = fenced.group(1)
+    # 某些推理模型即使收到 json_object，也可能在对象前后附带说明或
+    # <think> 块。只提取第一个可完整解码的 JSON 对象，随后仍做严格字段校验。
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL | re.IGNORECASE).strip()
+    data: Any = None
     try:
         data = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise NarrativeError("模型没有返回有效 JSON") from exc
+    except json.JSONDecodeError:
+        decoder = json.JSONDecoder()
+        for match in re.finditer(r"\{", content):
+            try:
+                candidate, _ = decoder.raw_decode(content[match.start():])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(candidate, dict):
+                data = candidate
+                break
+    if data is None:
+        raise NarrativeError("模型没有返回有效 JSON")
     if not isinstance(data, dict):
         raise NarrativeError("模型输出必须是 JSON 对象")
     missing = REQUIRED_FIELDS - set(data)
