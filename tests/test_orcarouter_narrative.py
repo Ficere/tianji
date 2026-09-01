@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import copy
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -81,9 +83,10 @@ class OrcaRouterNarrativeTests(unittest.TestCase):
             reading = self._reading(tmp)
             source = Path(tmp) / "reading.json"
             output = Path(tmp) / "fallback.json"
-            used_model = enhance_file(
-                source, output, api_key=None, model="orcarouter/free"
-            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                used_model = enhance_file(
+                    source, output, api_key=None, model="orcarouter/free"
+                )
             self.assertFalse(used_model)
             self.assertEqual(reading, json.loads(output.read_text(encoding="utf-8")))
 
