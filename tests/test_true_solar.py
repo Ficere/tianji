@@ -170,5 +170,38 @@ class IztroTrueSolarTests(unittest.TestCase):
                     self.assertEqual(local[star], ref["stars"][star], star)
 
 
+class RegionalTimezoneTests(unittest.TestCase):
+    def test_xinjiang_follows_beijing_dst(self):
+        self.assertEqual(get_timezone_offset_hours(39.47, 75.99, 1990, 7, 1, 10, 0)[0], 9.0)
+
+    def test_hong_kong_and_taipei_do_not_inherit_mainland_dst(self):
+        self.assertEqual(get_timezone_offset_hours(22.30, 114.17, 1990, 7, 1, 10, 0)[:2], (8.0, "Asia/Hong_Kong"))
+        self.assertEqual(get_timezone_offset_hours(25.03, 121.56, 1990, 7, 1, 10, 0)[:2], (8.0, "Asia/Taipei"))
+
+    def test_hong_kong_without_timezonefinder_is_estimated_not_mainland(self):
+        import fortune_calc
+        saved = fortune_calc._TF_INSTANCE
+        fortune_calc._TF_INSTANCE = None
+        try:
+            offset, zone, estimated = get_timezone_offset_hours(22.30, 114.17, 1990, 7, 1, 10, 0)
+            self.assertEqual((offset, zone, estimated), (8.0, "Asia/Hong_Kong", True))
+            self.assertEqual(get_timezone_offset_hours(39.90, 116.40, 1990, 7, 1, 10, 0)[0], 9.0)
+        finally:
+            fortune_calc._TF_INSTANCE = saved
+
+    def test_neighbours_inside_china_bbox_use_their_own_zone(self):
+        import fortune_calc
+        if fortune_calc._TF_INSTANCE is None:
+            self.skipTest("需要 timezonefinder")
+        for lat, lon, expected in [(37.57, 126.98, 9.0), (33.59, 130.40, 9.0),
+                                   (21.03, 105.85, 7.0), (28.61, 77.21, 5.5)]:
+            with self.subTest(lat=lat, lon=lon):
+                self.assertEqual(get_timezone_offset_hours(lat, lon, 2000, 1, 1, 10, 0)[0], expected)
+
+    def test_dst_warning_only_for_mainland(self):
+        seoul = person("2000-01-01", "10:00", 37.57, 126.98, "男")
+        self.assertNotIn("CN_DST_APPLIED", [w["code"] for w in seoul["warnings"]])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

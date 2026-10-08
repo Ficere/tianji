@@ -103,6 +103,13 @@ def facts(member: dict, as_of_year: int) -> dict:
     }
 
 
+def dayun_shown(f: dict) -> list[dict]:
+    """默认展示前 6 限；当前大限更靠后时延伸到当前大限。"""
+    seq = f["zw"]["大限序列"]
+    idx = next((i for i, d in enumerate(seq) if d["年龄范围"] == f["current_dayun"]), -1)
+    return seq[:max(6, idx + 1)]
+
+
 def sihua_line(f: dict) -> str:
     return "；".join(f"{k}{v['星曜']}→{v['所在宫位']}（{v['所在地支']}）" for k, v in f["zw"]["四化飞星"].items())
 
@@ -110,6 +117,9 @@ def sihua_line(f: dict) -> str:
 def time_note(member: dict, f: dict) -> str:
     pt, ts = f["pillar_time"], f["true_solar"]
     if pt.get("basis") != "true_solar":
+        if ts:
+            return (f"按用户指定的钟表时间 {member['birth_time']}（{pt.get('shichen', '')}）排盘；"
+                    f"同一出生地的真太阳时约为 {ts.get('true_solar_time_str', '—')}，仅作参考。")
         return "未取得出生地坐标，本盘按钟表时间排时柱；靠近时辰边界时结论可能偏一个时辰。"
     lon = ts.get("lon")
     note = (f"出生地经度约 {lon:.2f}°，经度修正 {ts['longitude_correction_min']:+.1f} 分钟，"
@@ -119,8 +129,8 @@ def time_note(member: dict, f: dict) -> str:
             "年柱、月柱按出生瞬间与节气时刻比较。")
     if pt.get("date") != member["solar_date"]:
         note += f"真太阳时已跨日至 {pt['date']}，日柱随之调整。"
-    if pt.get("clock_tz_offset_hours") == 9.0:
-        note += "出生时刻处于中国夏令时期间，已按 UTC+9 换算。"
+    if any(w.get("code") == "CN_DST_APPLIED" for w in f["warnings"]):
+        note += "出生时刻处于中国 1986–1991 年夏令时期间，已按 UTC+9 换算。"
     return note
 
 
@@ -149,12 +159,13 @@ def pair_relation(a: dict, b: dict) -> dict:
 def validate(chart: dict, narrative: dict) -> None:
     try:
         import jsonschema
-        schema = json.loads(NARRATIVE_SCHEMA.read_text(encoding="utf-8"))
-        jsonschema.validate(narrative, schema)
-    except ImportError:
-        pass
-    except Exception as exc:  # jsonschema.ValidationError
-        raise ReportError(f"narrative 不符合契约：{getattr(exc, 'message', exc)}") from exc
+    except ImportError as exc:
+        raise ReportError("缺少 jsonschema，无法校验 narrative；请运行 pip install -r requirements.txt") from exc
+    schema = json.loads(NARRATIVE_SCHEMA.read_text(encoding="utf-8"))
+    errors = sorted(jsonschema.Draft202012Validator(schema).iter_errors(narrative), key=lambda e: list(e.absolute_path))
+    if errors:
+        detail = "；".join(f"{'/'.join(str(x) for x in e.absolute_path) or '<root>'}: {e.message}" for e in errors[:5])
+        raise ReportError(f"narrative 不符合契约：{detail}")
     names = [m["name"] for m in chart["members"]]
     got = [p["name"] for p in narrative["persons"]]
     if got != names:
@@ -231,19 +242,19 @@ def person_md(i: int, member: dict, p: dict, f: dict) -> list[str]:
     L += ["", f"四化飞星：{sihua_line(f)}", "", "格局识别：", ""]
     L += [f"- {name}：{desc}" for name, desc in zw.get("格局识别") or []] or ["- 未识别到内置格局"]
     L += [f"- {x}" for x in p.get("extra_patterns", [])]
-    L += ["", "大限：" + "；".join(f"{d['年龄范围']} {d['宫位']}（{d['地支']}）" for d in zw["大限序列"][:6])
+    L += ["", "大限：" + "；".join(f"{d['年龄范围']} {d['宫位']}（{d['地支']}）" for d in dayun_shown(f))
           + (f"。当前（虚岁{f['xu_age']}）处于 {f['current_dayun']}。" if f["current_dayun"] else f"。当前虚岁{f['xu_age']}，尚未起运（童限）。"),
           "", p["dayun_note"], "", "#### 六宫深度解读", ""]
     for item in p["palace_readings"]:
         L += [f"**{item['palace']}｜{palace_label(f, item['palace'])}**：{item['question']}", ""] + t3_md(item["triad"]) + [""]
     L += ["### 西洋星座", "", f"太阳 {f['sun']}｜月亮 {f['moon']}｜上升 {f['asc']}", ""] + t3_md(p["western_combo"])
     wg = f["wuge"]
-    if wg and p.get("wuge_reading"):
+    if wg:
         g = wg["五格"]
         strokes = " ".join(f"{x['字']}({x['康熙笔画']})" for x in wg["笔画明细"])
         L += ["", "### 三才五格", "", f"康熙笔画：{strokes}", "", "| 天格 | 人格 | 地格 | 总格 | 外格 |", "|---|---|---|---|---|",
               "| " + " | ".join(f"{g[k]['数理']}（{g[k]['吉凶']}）" for k in ["天格", "人格", "地格", "总格", "外格"]) + " |", "",
-              f"三才 {wg['三才']['配置']}（三才评级：{wg['三才']['分析']['评级']}）｜综合评分 **{wg['综合评分']}**（{wg['综合评级']}）", ""] + t3_md(p["wuge_reading"])
+              f"三才 {wg['三才']['配置']}（三才评级：{wg['三才']['分析']['评级']}）｜综合评分 **{wg['综合评分']}**（{wg['综合评级']}）", ""] + (t3_md(p["wuge_reading"]) if p.get("wuge_reading") else [])
     if p.get("mbti_note"):
         L += ["", "### MBTI 说明", "", p["mbti_note"]]
     L += ["", "### 六维度倾向（默认权重：" + "·".join(f"{SIGNAL_LABEL[k]}{v}" for k, v in W.items()) + "）", "",
@@ -324,8 +335,12 @@ SYN_MAX = {"wuxing_balance": 20, "wuxing_complete": 5, "shengxiao": 20, "riZhu":
 
 
 def synastry_rows(syn: dict) -> list[tuple]:
+    """分项满分与 analyze_synastry 的 max_possible 保持一致：姓名项不适用时不列出。"""
     cs = syn["composite_scores"]
-    return [(label, cs[k]["score"], SYN_MAX[k], cs[k]["comment"]) for k, label in SYN_LABELS if k in cs]
+    keys = [k for k, _ in SYN_LABELS if k in cs]
+    if sum(SYN_MAX[k] for k in keys) > syn["max_possible"] and "xingming" in keys:
+        keys.remove("xingming")
+    return [(label, cs[k]["score"], SYN_MAX[k], cs[k]["comment"]) for k, label in SYN_LABELS if k in keys]
 
 
 def pairs(members: list[dict]):
@@ -375,7 +390,7 @@ details{border:1px solid #ece3d3;border-radius:8px;padding:8px 12px;margin:6px 0
 .tp{display:none;padding:12px 4px}.tp.on{display:block}.foot{font-size:13px;color:#7a6e60}
 @media(max-width:640px){.six{grid-template-columns:1fr}.gz{font-size:22px}.zc{min-height:90px;font-size:11px;padding:5px}.wuge b{font-size:18px}}"""
 
-JS = """document.querySelectorAll('.dim').forEach(d=>{const s=JSON.parse(d.dataset.s);const f=()=>{let t=0,w=0;d.querySelectorAll('input').forEach(i=>{t+=s[i.dataset.k]*+i.value;w+=+i.value});d.querySelector('.sc').textContent=w?(t/w).toFixed(1):'—';d.querySelector('.fill').style.width=(w?t/w:0)+'%'};d.querySelectorAll('input').forEach(i=>i.addEventListener('input',f))});
+JS = """document.querySelectorAll('.dim').forEach(d=>{const s=JSON.parse(d.dataset.s);const f=()=>{let t=0,w=0;d.querySelectorAll('input').forEach(i=>{t+=s[i.dataset.k]*+i.value;w+=+i.value});d.querySelector('.sc').textContent=w?(t/w).toFixed(1):'—';const b=d.querySelector('.fill');b.style.animation='none';b.style.width=(w?t/w:0)+'%'};d.querySelectorAll('input').forEach(i=>i.addEventListener('input',f))});
 document.querySelectorAll('.tabgroup').forEach(g=>{const bs=g.querySelectorAll('.tabs button'),ps=g.querySelectorAll('.tp');bs.forEach((b,i)=>b.addEventListener('click',()=>{bs.forEach(x=>x.classList.remove('on'));ps.forEach(x=>x.classList.remove('on'));b.classList.add('on');ps[i].classList.add('on')}))});"""
 
 
@@ -421,7 +436,7 @@ def person_html(i: int, member: dict, p: dict, f: dict) -> str:
             out.append(f"<div class='{cls}'><div class='pn'>{h(name)}<small>{h(cell['gan'] + zhi)}</small></div>{stars}<div>{aux}</div></div>")
     out.append("</div><p class='lbl'>格局</p><ul>" + ("".join(f"<li>{h(n)}：{h(d)}</li>" for n, d in zw.get("格局识别") or []) or "<li>未识别到内置格局</li>")
                + "".join(f"<li>{h(x)}</li>" for x in p.get("extra_patterns", [])) + "</ul><p class='lbl'>大限</p><div class='tl'>")
-    for d in zw["大限序列"][:6]:
+    for d in dayun_shown(f):
         cur = " cur" if d["年龄范围"] == f["current_dayun"] else ""
         mains = "·".join(s for s in d["主星"] if s in MAJOR) or "借对宫" + "·".join(f["grid"][OPPOSITE[d["宫位"]]]["main"])
         out.append(f"<div class='tli{cur}'><b>{h(d['年龄范围'])}</b> {h(d['宫位'])}（{h(d['地支'])}）{h(mains)}</div>")
@@ -430,12 +445,13 @@ def person_html(i: int, member: dict, p: dict, f: dict) -> str:
         out.append(f"<details><summary><b>{h(item['palace'])}</b>｜{h(palace_label(f, item['palace']))}</summary><p class='q'>{h(item['question'])}</p>{t3_html(item['triad'])}</details>")
     out.append(f"<h3>西洋星座</h3><div class='chips'><span>☉ 太阳 {h(f['sun'])}</span><span>☽ 月亮 {h(f['moon'])}</span><span>↑ 上升 {h(f['asc'])}</span></div>{t3_html(p['western_combo'])}")
     wg = f["wuge"]
-    if wg and p.get("wuge_reading"):
+    if wg:
         g = wg["五格"]
         strokes = " ".join(f"{x['字']}({x['康熙笔画']})" for x in wg["笔画明细"])
         out.append(f"<h3>三才五格</h3><p class='mut'>康熙笔画：{h(strokes)}</p><div class='wuge'>"
                    + "".join(f"<div><small>{k}</small><b>{g[k]['数理']}</b><small>{h(g[k]['吉凶'])}</small></div>" for k in ["天格", "人格", "地格", "总格", "外格"])
-                   + f"</div><p>三才 <b>{h(wg['三才']['配置'])}</b>（{h(wg['三才']['分析']['评级'])}）｜综合 <b>{h(wg['综合评分'])}</b>（{h(wg['综合评级'])}）</p>{t3_html(p['wuge_reading'])}")
+                   + f"</div><p>三才 <b>{h(wg['三才']['配置'])}</b>（{h(wg['三才']['分析']['评级'])}）｜综合 <b>{h(wg['综合评分'])}</b>（{h(wg['综合评级'])}）</p>"
+                   + (t3_html(p["wuge_reading"]) if p.get("wuge_reading") else ""))
     if p.get("mbti_note"):
         out.append(f"<h3>MBTI 说明</h3><p>{h(p['mbti_note'])}</p>")
     out.append("<h3>六维度倾向</h3><p class='mut'>拖动滑块调整权重，分数实时重算。</p><div class='six'>")

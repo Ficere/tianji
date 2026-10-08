@@ -126,5 +126,72 @@ class RelationAndValidationTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;", page)
 
 
+class ReviewRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.nar = load_example()
+
+    def chart_for(self, **member):
+        base = {"name": "陈明远", "gender": "男", "solar_date": "1992-03-15", "birth_time": "14:30",
+                "birth_lat": 30.59, "birth_lon": 114.31}
+        base.update(member)
+        return {"members": [analyze_person(base)], "synastry": None}
+
+    def test_schema_violation_is_rejected(self):
+        self.nar["persons"][0]["six_dimensions"]["career"]["signals"]["bazi"][0] = 150
+        with self.assertRaises(ReportError):
+            render(self.chart_for(mbti="INTJ"), self.nar, 2026)
+
+    def test_wuge_facts_render_without_reading(self):
+        self.nar["persons"][0].pop("wuge_reading")
+        md, _ = render(self.chart_for(mbti="INTJ"), self.nar, 2026)
+        self.assertIn("### 三才五格", md)
+        self.assertIn("综合评分", md)
+
+    def test_explicit_clock_basis_is_not_described_as_missing_data(self):
+        md, _ = render(self.chart_for(mbti="INTJ", time_basis="clock"), self.nar, 2026)
+        self.assertIn("按用户指定的钟表时间", md)
+        self.assertNotIn("未取得出生地坐标", md)
+
+    def test_utc9_outside_china_is_not_called_china_dst(self):
+        md, _ = render(self.chart_for(mbti="INTJ", birth_lat=37.57, birth_lon=126.98), self.nar, 2026)
+        self.assertNotIn("夏令时", md.split("## 置信度")[0])
+
+    def test_current_dayun_after_sixth_limit_is_listed(self):
+        chart = self.chart_for(mbti="INTJ")
+        md, page = render(chart, self.nar, 2072)
+        cur = [d for d in chart["members"][0]["ziwei"]["大限序列"] if d["年龄范围"] in md.split("当前（虚岁81）处于 ")[1][:12]]
+        self.assertTrue(cur)
+        self.assertIn(f"{cur[0]['年龄范围']} {cur[0]['宫位']}", md)
+        self.assertIn("tli cur", page)
+
+    def test_slider_disables_initial_animation(self):
+        _, page = render(self.chart_for(mbti="INTJ"), self.nar, 2026)
+        self.assertIn("style.animation='none'", page)
+
+
+class AliasSynastryTests(unittest.TestCase):
+    def test_name_band_hidden_when_not_applicable(self):
+        members = [analyze_person({"name": n, "name_is_alias": True, "gender": "男", "solar_date": d,
+                                   "birth_time": "10:00", "birth_lat": 39.9, "birth_lon": 116.4})
+                   for n, d in [("甲", "1991-02-10"), ("乙", "1993-07-07")]]
+        chart = {"members": members, "synastry": analyze_synastry(members)}
+        self.assertEqual(chart["synastry"]["max_possible"], 95)
+        nar = load_example()
+        nar["persons"] = [person_narrative("甲"), person_narrative("乙")]
+        for p in nar["persons"]:
+            p.pop("wuge_reading")
+        T = {"adv": "a", "risk": "r", "act": "c"}
+        nar["relation"] = {"type": "synastry", "reading": [T], "nourish": "n", "drain": "d", "window": "w",
+                           "advice": [["工作", "x"]], "reconciliation": "与差异和解——不是消除差异，而是分工。"}
+        md, page = render(chart, nar, 2026)
+        self.assertNotIn("| 姓名合盘 |", md)
+        self.assertNotIn("<span>姓名合盘</span>", page)
+        from render_report import synastry_rows
+        rows = synastry_rows(chart["synastry"])
+        self.assertEqual(sum(r[2] for r in rows), chart["synastry"]["max_possible"])
+        for label, score, cap, _ in rows:
+            self.assertIn(f"| {label} | {score} | {cap} |", md)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

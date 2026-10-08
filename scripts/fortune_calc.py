@@ -988,6 +988,9 @@ _CN_DST_PERIODS = (
     ((1991, 4, 14), (1991, 9, 15)),
 )
 _CN_LOCAL_ZONES = {"Asia/Shanghai", "Asia/Hong_Kong", "Asia/Macau", "Asia/Taipei"}
+# timezonefinder 对中国大陆可能返回的地理时区：法定报时仍为北京时间
+_CN_MAINLAND_GEO_ZONES = {"Asia/Shanghai", "Asia/Urumqi", "Asia/Kashgar", "Asia/Chongqing",
+                          "Asia/Chungking", "Asia/Harbin", "PRC"}
 
 
 def _cn_builtin_dst(year, month, day, hour, minute):
@@ -1004,28 +1007,54 @@ def _china_offset_hours(lat, lon, year, month, day, hour, minute):
     新疆、西藏等地理时区不同的地区仍按北京时间登记；港澳台使用各自的
     IANA 时区（标准时同为 UTC+8，但夏令时历史不同）。
     """
-    zone = "Asia/Shanghai"
+    zone, estimated = None, False
     if _TF_INSTANCE is not None:
         try:
             found = _TF_INSTANCE.timezone_at(lat=lat, lng=lon)
-            if found in _CN_LOCAL_ZONES:
-                zone = found
         except Exception:
-            pass
+            found = None
+        if found in _CN_LOCAL_ZONES:
+            zone = found
+        elif found in _CN_MAINLAND_GEO_ZONES:
+            zone = "Asia/Shanghai"
+        elif found:
+            # 矩形框内的邻国（首尔、福冈、河内、德里、阿拉木图等）：交给通用时区逻辑
+            return None
+    if zone is None:
+        # timezonefinder 不可用：按港澳台陆地范围近似判断，避免把港澳台套用大陆夏令时
+        zone, estimated = _cn_zone_by_bbox(lat, lon), True
     if _pytz is not None:
         try:
             localized = _pytz.timezone(zone).localize(
                 datetime.datetime(year, month, day, hour, minute), is_dst=None)
-            return localized.utcoffset().total_seconds() / 3600.0, zone, False
+            return localized.utcoffset().total_seconds() / 3600.0, zone, estimated
         except (_pytz.exceptions.AmbiguousTimeError, _pytz.exceptions.NonExistentTimeError):
             localized = _pytz.timezone(zone).localize(
                 datetime.datetime(year, month, day, hour, minute), is_dst=False)
-            return localized.utcoffset().total_seconds() / 3600.0, zone + "（夏令时切换时刻，按标准时处理）", False
+            return localized.utcoffset().total_seconds() / 3600.0, zone + "（夏令时切换时刻，按标准时处理）", estimated
         except Exception:
             pass
     if zone == "Asia/Shanghai":
-        return (9.0 if _cn_builtin_dst(year, month, day, hour, minute) else 8.0), zone, False
-    return 8.0, zone, True
+        return (9.0 if _cn_builtin_dst(year, month, day, hour, minute) else 8.0), zone, estimated
+    # 港澳台自 1980 年起不再实行夏令时；更早年份缺少历史表时只能按标准时估算
+    return 8.0, zone, estimated or year < 1980
+
+
+# 港澳台近似陆地范围（仅在 timezonefinder 不可用时使用）
+_CN_ZONE_BOXES = (
+    ("Asia/Macau", 22.10, 22.22, 113.52, 113.61),
+    ("Asia/Hong_Kong", 22.13, 22.57, 113.83, 114.45),
+    ("Asia/Taipei", 21.85, 25.35, 119.95, 122.10),   # 台湾本岛
+    ("Asia/Taipei", 23.10, 23.85, 119.30, 119.75),   # 澎湖
+    ("Asia/Taipei", 24.35, 24.55, 118.20, 118.50),   # 金门
+)
+
+
+def _cn_zone_by_bbox(lat, lon):
+    for zone, lat_min, lat_max, lon_min, lon_max in _CN_ZONE_BOXES:
+        if lat_min <= lat <= lat_max and lon_min <= lon <= lon_max:
+            return zone
+    return "Asia/Shanghai"
 
 
 def get_timezone_offset_hours(lat, lon, year=2000, month=1, day=1, hour=12, minute=0):
@@ -1035,14 +1064,17 @@ def get_timezone_offset_hours(lat, lon, year=2000, month=1, day=1, hour=12, minu
     （自动处理历史时区变更/夏令时；出生地在推荐使用出生当天日期计算）。
     若两个库都不可用，回退到经度粗略估算（每15°=1小时，不校正夏令时/历史时区）。
 
-    特殊规则：中国大陆/港澳台全境（包括新疆、西藏等地理时区非UTC+8的地区）
-    法定报时统一使用北京时间 UTC+8——用户提供的出生时刻钟表数字就是按北京时间记录的，
-    因此该区域强制返回 UTC+8，不采用 timezonefinder 给出的地理时区（如 Asia/Urumqi）。
+    特殊规则：中国大陆全境（包括新疆、西藏等地理时区非UTC+8的地区）法定报时统一使用
+    北京时间——用户提供的出生时刻钟表数字就是按北京时间记录的，因此不采用
+    timezonefinder 给出的地理时区（如 Asia/Urumqi），并保留 1986–1991 年夏令时；
+    港澳台使用各自 IANA 时区。中国矩形框内的邻国按其实际时区处理。
 
     返回: (偏移小时数, 时区名或None, 是否为估算值)
     """
     if _is_china_region(lat, lon):
-        return _china_offset_hours(lat, lon, year, month, day, hour, minute)
+        cn = _china_offset_hours(lat, lon, year, month, day, hour, minute)
+        if cn is not None:
+            return cn
 
     if _TF_INSTANCE is not None and _pytz is not None:
         try:
@@ -1871,13 +1903,13 @@ def analyze_person(member):
             astro_tz_offset, astro_tz_name, _tz_estimated = get_timezone_offset_hours(
                 _lat, _lon, s_year, s_month, s_day, s_hour, s_minute
             )
-    if _lat is not None and _is_china_region(_lat, _lon) and astro_tz_offset == 9.0:
+    if astro_tz_name == "Asia/Shanghai" and astro_tz_offset == 9.0:
         warnings.append({
             "code": "CN_DST_APPLIED",
             "field": "birth_time",
             "severity": "low",
-            "message": "出生时刻处于中国 1986–1991 年夏令时期间，已按 UTC+9 换算钟表时间。"
-                       "若出生证明记录的是标准时间，请改传标准时间。",
+            "message": "出生时刻处于中国 1986–1991 年夏令时期间，birth_time 已按当时的夏令时钟表时间（UTC+9）换算。"
+                       "若出生记录使用的是未拨快的北京标准时间，请将 birth_time 加 1 小时后重算（例如 08:10 → 09:10）。",
         })
 
     # 出生瞬间的北京时间：用于与节气时刻比较（年柱、月柱、起运）
