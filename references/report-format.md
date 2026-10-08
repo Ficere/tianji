@@ -46,4 +46,4 @@ python scripts/tianji.py --input input.json --narrative narrative.json --output-
 python scripts/render_report.py --chart tianji-output/chart.json --narrative narrative.json --output-dir tianji-output
 ```
 
-完整示例见 `examples/report/example_report_input.json` 与 `examples/report/example_narrative.json`（虚构人物）。
+完整示例见 `examples/report/example_members.json` 与 `examples/report/example_narrative.json`（虚构人物）。

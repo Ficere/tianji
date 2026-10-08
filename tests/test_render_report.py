@@ -18,7 +18,7 @@ from fortune_calc import analyze_person, analyze_synastry  # noqa: E402
 from render_report import ReportError, render  # noqa: E402
 from tianji import run_pipeline  # noqa: E402
 
-EXAMPLE_INPUT = ROOT / "examples" / "report" / "example_report_input.json"
+EXAMPLE_INPUT = ROOT / "examples" / "report" / "example_members.json"
 EXAMPLE_NARRATIVE = ROOT / "examples" / "report" / "example_narrative.json"
 
 
