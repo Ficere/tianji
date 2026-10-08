@@ -4,12 +4,14 @@
 
 - `chart.json`：确定性计算的完整原始输出，可包含计算层扩展字段。
 - `reading.json`：受 `schemas/reading_v8.schema.json` 约束的报告数据。
-- `report.html`：由 reading 渲染的静态展示文件，不是新的事实源。
+- `report.html`：由 reading 渲染的快速预览，不是新的事实源。
+- `tianji_report.md` / `tianji_report.html`：固定格式的最终交付物，由 `chart.json`（事实）与 Agent 撰写的 `narrative.json`（解读，受 `schemas/narrative_v1.schema.json` 约束）渲染，格式见 [report-format.md](report-format.md)。
+- `chart.json` 成员新增 `pillar_time`（排盘时钟）、`birth_lat`/`birth_lon` 与 `clock_alternative`（真太阳时与钟表时间落在不同时辰时的对照要点）。
 
 ## 版本
 
 - 契约版本：`meta.version = "8.3"`。
-- v8.3 新生成文件的引擎版本：`meta.engine_version = "8.3.0"`；旧示例迁移时可省略，避免伪造原始引擎来源。
+- 新生成文件的引擎版本：`meta.engine_version = "8.4.0"`（契约版本仍为 8.3）；旧示例迁移时可省略，避免伪造原始引擎来源。
 - `meta.scene` 只取 `personal` 或 `synastry`。
 - `persons` 支持 1–8 人；`person_index` 从 1 连续编号。
 - 单人时 `synastry` 为 `null`；多人时必须提供合盘结构。

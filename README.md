@@ -142,6 +142,7 @@ python scripts/tianji.py \
 
 | 版本 | 要点 |
 |------|------|
+| **v8.4** | 时柱、日柱、农历日、称骨与紫微时辰默认按真太阳时，年柱/月柱按出生瞬间；修复中国 1986–1991 年夏令时被忽略；支持 Agent 传入区县级 `birth_lat`/`birth_lon`；新增 `render_report.py` 固定格式 Markdown + HTML 报告；合盘生肖补充辰午酉亥自刑；新增真太阳时独立引擎对照测试 |
 | **v8.3** | 统一输入/输出契约与一站式 CLI；支持 1–8 人报告；修复境外出生时间硬编码 UTC+8 与紫微漏算天马；HTML 全量转义；加入 lunar-python、Swiss Ephemeris、iztro 固定版本交叉验证 |
 | **v8.2** | 深层分析层 `deep`：人元司令藏干十神、刑冲合会、用神喜忌（含流派声明与置信度）、跨系统一致性检测。**纯计算层增强，报告篇幅与 v8.1 持平** |
 | **v8.1** | 合盘计分改为人对均值制（修复 5 人组可得 105 分的量纲缺陷）；补齐姓名合盘计分；schema 单一真源约束 |
@@ -375,27 +376,32 @@ tianji/
 │   ├── reading_contract.py             # 输入/输出契约校验与旧版迁移
 │   ├── build_reading.py                # chart → schema-valid reading 骨架
 │   ├── orcarouter_narrative.py          # 脱敏叙事增强；失败自动离线回退
-│   ├── generate_html.py                # reading.json → 静态 HTML 报告渲染器
+│   ├── generate_html.py                # reading.json → 静态 HTML 快速预览
+│   ├── render_report.py                # chart + narrative → 固定格式 Markdown/HTML 报告
 │   └── tianji.py                       # 一站式流水线入口
 ├── schemas/
 │   ├── input_v1.schema.json           # 输入 JSON Schema 契约
-│   └── reading_v8.schema.json         # 解读结果 JSON Schema 契约
+│   ├── reading_v8.schema.json         # 解读结果 JSON Schema 契约
+│   └── narrative_v1.schema.json       # 固定报告解读层契约
 ├── prompts/
 │   ├── reading_json_prompt.md         # 叙事生成提示词
 │   └── synastry_addendum.md           # 合盘场景补充提示词
 ├── examples/
 │   ├── example_personal.json          # 个人报告示例（CI 校验）
-│   └── example_synastry.json          # 合盘报告示例（CI 校验）
+│   ├── example_synastry.json          # 合盘报告示例（CI 校验）
+│   └── report/                        # 固定格式报告示例输入与解读（虚构人物）
 ├── tests/
 │   ├── test_suite.py                  # 计算单元测试
 │   ├── test_contract_pipeline.py      # 契约、安全与多人端到端测试
-│   └── test_third_party.py            # 三个独立引擎交叉验证
+│   ├── test_third_party.py            # 三个独立引擎交叉验证
+│   ├── test_true_solar.py             # 真太阳时排盘与独立引擎对照
+│   └── test_render_report.py          # 固定报告格式渲染测试
 ├── references/
 │   ├── kangxi_strokes.json            # 康熙字典笔画查找表（48708 字）
 │   ├── city_coords.json               # 城市经纬度表（中国全境 + 全球主要城市）
 │   ├── weight-tables.md               # 称骨对照表（52 首歌诀）
 │   ├── use-cases.md                   # 使用案例
-│   └── output-template.md             # 报告输出模板
+│   └── report-format.md               # 固定报告格式（chart + narrative → MD/HTML）
 ├── LICENSE
 └── README.md
 ```

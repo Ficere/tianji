@@ -420,9 +420,26 @@ def days_to_next_jieling(year, month, day, hour=0, minute=0):
         return None
 
 
+def calc_four_pillars_split(instant_bjt, pillar_local):
+    """
+    分别用两个时钟计算四柱：
+      - instant_bjt：出生瞬间换算成的北京时间 (y, m, d, h, mi)，用于与节气时刻比较，
+        决定年柱（立春）和月柱（节令）。节气是天文瞬间，与出生地经度无关。
+      - pillar_local：排盘时钟 (y, m, d, h, mi)，通常为出生地真太阳时，决定日柱与时柱。
+    子时处理：晚子时不换日柱（23:00-00:00 仍用当日日柱）。
+    """
+    y, mo, d, h, mi = instant_bjt
+    py, pmo, pd, ph, pmi = pillar_local
+    year_pillar = calc_year_pillar(y, mo, d, h, mi)
+    month_pillar = calc_month_pillar(y, mo, d, h, mi)
+    day_pillar = calc_day_pillar(py, pmo, pd)
+    hour_pillar = calc_hour_pillar(day_pillar[0], ph + pmi / 60.0)
+    return [year_pillar, month_pillar, day_pillar, hour_pillar]
+
+
 def calc_four_pillars(year, month, day, hour=0, minute=0):
     """
-    一次性计算完整四柱八字。
+    一次性计算完整四柱八字（输入即排盘时钟，且按北京时间与节气比较）。
     子时处理：晚子时不换日柱（23:00-00:00 仍用当日日柱）。
     """
     hour_float = hour + minute / 60.0
@@ -959,6 +976,58 @@ def _is_china_region(lat, lon):
     return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
 
 
+# 中国大陆 1986–1991 年实行夏令时（UTC+9）。出生证明记录的是当时的钟表时间，
+# 因此这些区间内必须按 UTC+9 换算，否则真太阳时、时柱和上升星座都会偏 1 小时。
+# 区间为当地钟表时间 [开始, 结束)：开始日 02:00 拨快到 03:00，结束日 02:00(夏令) 拨回 01:00。
+_CN_DST_PERIODS = (
+    ((1986, 5, 4), (1986, 9, 14)),
+    ((1987, 4, 12), (1987, 9, 13)),
+    ((1988, 4, 17), (1988, 9, 11)),
+    ((1989, 4, 16), (1989, 9, 17)),
+    ((1990, 4, 15), (1990, 9, 16)),
+    ((1991, 4, 14), (1991, 9, 15)),
+)
+_CN_LOCAL_ZONES = {"Asia/Shanghai", "Asia/Hong_Kong", "Asia/Macau", "Asia/Taipei"}
+
+
+def _cn_builtin_dst(year, month, day, hour, minute):
+    clock = (year, month, day, hour, minute)
+    for start, end in _CN_DST_PERIODS:
+        if (*start, 2, 0) <= clock < (*end, 2, 0):
+            return True
+    return False
+
+
+def _china_offset_hours(lat, lon, year, month, day, hour, minute):
+    """中国境内统一按法定时区，但保留各地历史夏令时。
+
+    新疆、西藏等地理时区不同的地区仍按北京时间登记；港澳台使用各自的
+    IANA 时区（标准时同为 UTC+8，但夏令时历史不同）。
+    """
+    zone = "Asia/Shanghai"
+    if _TF_INSTANCE is not None:
+        try:
+            found = _TF_INSTANCE.timezone_at(lat=lat, lng=lon)
+            if found in _CN_LOCAL_ZONES:
+                zone = found
+        except Exception:
+            pass
+    if _pytz is not None:
+        try:
+            localized = _pytz.timezone(zone).localize(
+                datetime.datetime(year, month, day, hour, minute), is_dst=None)
+            return localized.utcoffset().total_seconds() / 3600.0, zone, False
+        except (_pytz.exceptions.AmbiguousTimeError, _pytz.exceptions.NonExistentTimeError):
+            localized = _pytz.timezone(zone).localize(
+                datetime.datetime(year, month, day, hour, minute), is_dst=False)
+            return localized.utcoffset().total_seconds() / 3600.0, zone + "（夏令时切换时刻，按标准时处理）", False
+        except Exception:
+            pass
+    if zone == "Asia/Shanghai":
+        return (9.0 if _cn_builtin_dst(year, month, day, hour, minute) else 8.0), zone, False
+    return 8.0, zone, True
+
+
 def get_timezone_offset_hours(lat, lon, year=2000, month=1, day=1, hour=12, minute=0):
     """
     根据经纬度+日期，离线查询当地标准时区相对UTC的偏移小时数。
@@ -973,7 +1042,7 @@ def get_timezone_offset_hours(lat, lon, year=2000, month=1, day=1, hour=12, minu
     返回: (偏移小时数, 时区名或None, 是否为估算值)
     """
     if _is_china_region(lat, lon):
-        return 8.0, "Asia/Shanghai（中国法定统一时区）", False
+        return _china_offset_hours(lat, lon, year, month, day, hour, minute)
 
     if _TF_INSTANCE is not None and _pytz is not None:
         try:
@@ -1775,14 +1844,90 @@ def analyze_person(member):
     # 避免调用方（Agent 或下游脚本）把降级值当成准确结果使用。
     warnings = []
 
-    # 公历转农历：若用户未提供 lunar 字段，自动转换
+    # 解析时间（birth_time 为出生地当地钟表时间）
+    parts = birth_time.split(":")
+    s_hour = int(parts[0])
+    s_minute = int(parts[1])
+
+    # 解析日期
+    solar_parts = solar_date.split("-")
+    s_year, s_month, s_day = int(solar_parts[0]), int(solar_parts[1]), int(solar_parts[2])
+    clock_dt = datetime.datetime(s_year, s_month, s_day, s_hour, s_minute)
+
+    # 出生地：birth_lat/birth_lon 优先（由 Agent 查得的区县级坐标），否则解析 birth_city
+    if member.get("birth_lat") is not None and member.get("birth_lon") is not None:
+        location_input = (member["birth_lat"], member["birth_lon"])
+    else:
+        location_input = birth_city or None
+
+    # 西洋占星的天体位置必须把当地出生时间换算为 UT。城市缺失或无法
+    # 解析时沿用中国用户历史默认值 UTC+8，并由上升星座模块给出城市告警。
+    astro_tz_offset = 8.0
+    astro_tz_name = None
+    _lat = _lon = None
+    if location_input:
+        _lat, _lon, _resolved_city = parse_city_or_coords(location_input)
+        if _lat is not None:
+            astro_tz_offset, astro_tz_name, _tz_estimated = get_timezone_offset_hours(
+                _lat, _lon, s_year, s_month, s_day, s_hour, s_minute
+            )
+    if _lat is not None and _is_china_region(_lat, _lon) and astro_tz_offset == 9.0:
+        warnings.append({
+            "code": "CN_DST_APPLIED",
+            "field": "birth_time",
+            "severity": "low",
+            "message": "出生时刻处于中国 1986–1991 年夏令时期间，已按 UTC+9 换算钟表时间。"
+                       "若出生证明记录的是标准时间，请改传标准时间。",
+        })
+
+    # 出生瞬间的北京时间：用于与节气时刻比较（年柱、月柱、起运）
+    instant_bjt_dt = clock_dt - datetime.timedelta(hours=astro_tz_offset - 8.0)
+    instant_bjt = (instant_bjt_dt.year, instant_bjt_dt.month, instant_bjt_dt.day,
+                   instant_bjt_dt.hour, instant_bjt_dt.minute)
+
+    # 排盘时钟：默认真太阳时（日柱、时柱、农历日、称骨时辰、紫微时辰）
+    time_basis = member.get("time_basis", "true_solar")
+    true_solar_calc = None
+    if _lat is not None:
+        true_solar_calc = calc_true_solar_time(
+            s_year, s_month, s_day, s_hour, s_minute, _lat, _lon,
+            tz_offset_hours=astro_tz_offset)
+    if time_basis == "true_solar" and true_solar_calc is not None:
+        pillar_dt = clock_dt + datetime.timedelta(minutes=true_solar_calc["total_correction_min"])
+        pillar_basis = "true_solar"
+    else:
+        pillar_dt = clock_dt
+        pillar_basis = "clock"
+        if time_basis == "true_solar":
+            warnings.append({
+                "code": "TRUE_SOLAR_UNAVAILABLE",
+                "field": "bazi",
+                "severity": "high",
+                "message": "缺少可解析的出生地坐标，时柱、紫微与称骨时辰暂按钟表时间排盘，"
+                           "靠近时辰边界时可能错一个时辰。请查得出生地经纬度后以 birth_lat/birth_lon 重算。",
+            })
+    hour_float = pillar_dt.hour + pillar_dt.minute / 60.0 + pillar_dt.second / 3600.0
+    shichen_idx = get_shichen(hour_float)
+    shichen_start = (shichen_idx * 2 - 1) % 24
+    pillar_time = {
+        "basis": pillar_basis,
+        "date": pillar_dt.strftime("%Y-%m-%d"),
+        "time": pillar_dt.strftime("%H:%M"),
+        "shichen": DI_ZHI[shichen_idx] + "时",
+        # 距所在时辰起止的分钟数，用于判断时辰是否稳定
+        "minutes_from_shichen_start": round(((hour_float - shichen_start) % 24) * 60, 1),
+        "minutes_to_shichen_end": round((2 - (hour_float - shichen_start) % 24) * 60, 1),
+        "instant_beijing_time": instant_bjt_dt.strftime("%Y-%m-%d %H:%M"),
+        "clock_tz_offset_hours": astro_tz_offset,
+    }
+
+    # 公历转农历：按排盘时钟的日期（与日柱一致）；用户提供 lunar 时以用户为准
+    p_year, p_month, p_day = pillar_dt.year, pillar_dt.month, pillar_dt.day
     if "month" in lunar and "day" in lunar:
         lunar_month = int(lunar["month"])
         lunar_day = int(lunar["day"])
     elif not ZHDATE_AVAILABLE:
-        _solar_parts = solar_date.split("-")
-        _sy, _sm, _sd = int(_solar_parts[0]), int(_solar_parts[1]), int(_solar_parts[2])
-        lunar_month, lunar_day = solar_to_lunar(_sy, _sm, _sd)
+        lunar_month, lunar_day = solar_to_lunar(p_year, p_month, p_day)
         warnings.append({
             "code": "ZHDATE_MISSING",
             "field": "chenggu",
@@ -1790,33 +1935,13 @@ def analyze_person(member):
             "message": "未安装 zhdate，农历退化为正月初一，称骨结果不可用。请 pip install zhdate 后重算。",
         })
     else:
-        # 自动公历转农历（需 zhdate 库）
-        _solar_parts = solar_date.split("-")
-        _sy, _sm, _sd = int(_solar_parts[0]), int(_solar_parts[1]), int(_solar_parts[2])
-        lunar_month, lunar_day = solar_to_lunar(_sy, _sm, _sd)
-
-    # 解析时间
-    parts = birth_time.split(":")
-    hour_float = int(parts[0]) + int(parts[1]) / 60.0
-    s_hour = int(parts[0])
-    s_minute = int(parts[1])
-
-    # 解析日期
-    solar_parts = solar_date.split("-")
-    s_year, s_month, s_day = int(solar_parts[0]), int(solar_parts[1]), int(solar_parts[2])
-
-    # 西洋占星的天体位置必须把当地出生时间换算为 UT。城市缺失或无法
-    # 解析时沿用中国用户历史默认值 UTC+8，并由上升星座模块给出城市告警。
-    astro_tz_offset = 8.0
-    if birth_city:
-        _lat, _lon, _resolved_city = parse_city_or_coords(birth_city)
-        if _lat is not None:
-            astro_tz_offset, _tz_name, _tz_estimated = get_timezone_offset_hours(
-                _lat, _lon, s_year, s_month, s_day, s_hour, s_minute
-            )
+        lunar_month, lunar_day = solar_to_lunar(p_year, p_month, p_day)
 
     # 自动计算完整四柱
-    computed = calc_four_pillars(s_year, s_month, s_day, s_hour, s_minute)
+    computed = calc_four_pillars_split(
+        instant_bjt,
+        (pillar_dt.year, pillar_dt.month, pillar_dt.day, pillar_dt.hour, pillar_dt.minute),
+    )
 
     pillar_names = ["年柱", "月柱", "日柱", "时柱"]
     for i in range(4):
@@ -1884,8 +2009,8 @@ def analyze_person(member):
     rising_near_boundary = False
     rising_note = ""
     true_solar_time_info = None
-    if birth_city:
-        asc_full = get_ascendant_full(s_year, s_month, s_day, s_hour, s_minute, birth_city)
+    if location_input:
+        asc_full = get_ascendant_full(s_year, s_month, s_day, s_hour, s_minute, location_input)
         if "error" not in asc_full:
             rising_sign = asc_full["sign"]
             rising_lon = asc_full["longitude"]
@@ -1897,7 +2022,7 @@ def analyze_person(member):
             note_parts = []
             if rising_near_boundary:
                 note_parts.append("⚠️ 上升星座处于边界附近")
-            if asc_full["resolved_city"] != birth_city:
+            if isinstance(location_input, str) and asc_full["resolved_city"] != birth_city:
                 note_parts.append(f"（已将「{birth_city}」解析为「{asc_full['resolved_city']}」）")
             if asc_full.get("tz_is_estimated"):
                 note_parts.append("⚠️ 时区偏移为粗略估算，未校正夏令时/历史时区变更")
@@ -1915,7 +2040,7 @@ def analyze_person(member):
                 "code": "CITY_UNRESOLVED",
                 "field": "rising_sign",
                 "severity": "medium",
-                "message": f"无法解析出生城市「{birth_city}」，上升星座与真太阳时未计算。可改传「纬度,经度」。",
+                "message": f"无法解析出生城市「{birth_city}」，上升星座与真太阳时未计算。请查得出生地经纬度后以 birth_lat/birth_lon 传入。",
             })
 
     # 三星组合解读
@@ -1997,6 +2122,10 @@ def analyze_person(member):
         "rising_longitude": rising_lon,
         "rising_boundary_note": rising_note,
         "true_solar_time": true_solar_time_info,
+        # 排盘时钟（日柱/时柱/农历日/称骨与紫微时辰所用）
+        "pillar_time": pillar_time,
+        "birth_lat": _lat,
+        "birth_lon": _lon,
         # 三星组合解读
         "astro_combo_reading": astro_combo_reading,
         # 紫微（完整版）
@@ -2009,12 +2138,10 @@ def analyze_person(member):
     # 全部属于计算层，供叙事层加深理解，不对应任何新增报告章节。
     try:
         from deep_analysis import build_deep_analysis
-        _sp = solar_date.split("-")
-        _hh, _mm = (birth_time.split(":") + ["0"])[:2] if birth_time else ("0", "0")
-        _y, _mo, _d = int(_sp[0]), int(_sp[1]), int(_sp[2])
-        _days = days_since_jieling(_y, _mo, _d, int(_hh), int(_mm))
-        _to_next = days_to_next_jieling(_y, _mo, _d, int(_hh), int(_mm))
-        result["_birth_year"] = _y
+        _y, _mo, _d, _hh, _mm = instant_bjt
+        _days = days_since_jieling(_y, _mo, _d, _hh, _mm)
+        _to_next = days_to_next_jieling(_y, _mo, _d, _hh, _mm)
+        result["_birth_year"] = s_year
         result["deep"] = build_deep_analysis(
             result, _days,
             gender=member.get("gender") or gender,
@@ -2069,6 +2196,8 @@ XIANG_XING_SET = {frozenset(p) for p in [
     ("丑", "戌"), ("戌", "未"), ("丑", "未"),
     ("子", "卯"),
 ]}
+# 自刑：辰午酉亥同支相见
+ZI_XING_ZHI = {"辰", "午", "酉", "亥"}
 # 相破：子酉 午卯 申巳 寅亥 辰丑 戌未
 XIANG_PO_SET = {frozenset(p) for p in [
     ("子", "酉"), ("午", "卯"), ("申", "巳"),
@@ -2104,7 +2233,7 @@ XINGZUO_ASPECT_SCORE = {
 SHENGXIAO_BASE = 12
 SHENGXIAO_DELTA = {
     "六合": 8, "三合": 6, "同支比和": 2,
-    "六冲": -7, "相害": -4, "相刑": -3, "相破": -2,
+    "六冲": -7, "相害": -4, "相刑": -3, "自刑": -3, "相破": -2,
 }
 
 # 日主单对：按优先级取绝对分（合 > 相生 > 比和 > 相克），满分 20
@@ -2118,6 +2247,10 @@ def _score_shengxiao_pair(z1, z2):
     if z1 == z2:
         labels.append("同支比和")
         delta += SHENGXIAO_DELTA["同支比和"]
+        # 辰午酉亥同支相见为自刑（与 deep_analysis.ZI_XING 口径一致）
+        if z1 in ZI_XING_ZHI:
+            labels.append("自刑")
+            delta += SHENGXIAO_DELTA["自刑"]
     else:
         pair_fs = frozenset([z1, z2])
         if pair_fs in LIU_HE_SET:
