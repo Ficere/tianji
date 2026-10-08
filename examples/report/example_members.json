@@ -1,0 +1,14 @@
+{
+  "members": [
+    {
+      "name": "陈明远",
+      "gender": "男",
+      "solar_date": "1992-03-15",
+      "birth_time": "14:30",
+      "birth_city": "湖北省武汉市",
+      "birth_lat": 30.59,
+      "birth_lon": 114.31,
+      "mbti": "INTJ"
+    }
+  ]
+}

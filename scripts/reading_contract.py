@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 READING_SCHEMA_PATH = ROOT / "schemas" / "reading_v8.schema.json"
 INPUT_SCHEMA_PATH = ROOT / "schemas" / "input_v1.schema.json"
 SCHEMA_VERSION = "8.3"
-ENGINE_VERSION = "8.3.0"
+ENGINE_VERSION = "8.4.0"
 
 
 class ContractError(ValueError):

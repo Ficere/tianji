@@ -59,7 +59,7 @@ class PipelineTests(unittest.TestCase):
             reading = json.loads(paths["reading"].read_text(encoding="utf-8"))
             validate_reading(reading)
             self.assertEqual(reading["meta"]["version"], "8.3")
-            self.assertEqual(reading["meta"]["engine_version"], "8.3.0")
+            self.assertEqual(reading["meta"]["engine_version"], "8.4.0")
             self.assertEqual(len(reading["persons"]), 3)
             self.assertEqual(reading["synastry"]["scenario_advice"][0]["scenario"], "团队协作")
             self.assertGreater(paths["report"].stat().st_size, 50_000)

@@ -1,0 +1,459 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ficere/tianji/schemas/narrative_v1.schema.json",
+  "title": "天机固定报告解读层 narrative v1",
+  "description": "Agent 撰写的解读文字；事实字段由 chart.json 提供，不得在此重复或改写。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "persons",
+    "confidence",
+    "footer"
+  ],
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "scenario": {
+      "type": "string"
+    },
+    "assumption": {
+      "type": "string"
+    },
+    "time_note": {
+      "type": "string"
+    },
+    "intro": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 3,
+        "maxItems": 3
+      }
+    },
+    "persons": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/person"
+      }
+    },
+    "relation": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/synastry"
+        },
+        {
+          "$ref": "#/$defs/parent_child"
+        }
+      ]
+    },
+    "footer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "confidence_pct",
+        "factors",
+        "questions"
+      ],
+      "properties": {
+        "confidence_pct": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "factors": {
+          "type": "string"
+        },
+        "questions": {
+          "type": "string"
+        }
+      }
+    },
+    "disclaimer": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "triad": {
+      "type": "object",
+      "required": [
+        "adv",
+        "risk",
+        "act"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "adv": {
+          "type": "string",
+          "minLength": 1
+        },
+        "risk": {
+          "type": "string",
+          "minLength": 1
+        },
+        "act": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "signal": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "dimension": {
+      "type": "object",
+      "required": [
+        "signals",
+        "summary"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signals": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "bazi": {
+              "$ref": "#/$defs/signal"
+            },
+            "ziwei": {
+              "$ref": "#/$defs/signal"
+            },
+            "bone": {
+              "$ref": "#/$defs/signal"
+            },
+            "zodiac": {
+              "$ref": "#/$defs/signal"
+            },
+            "name": {
+              "$ref": "#/$defs/signal"
+            },
+            "mbti": {
+              "$ref": "#/$defs/signal"
+            }
+          }
+        }
+      }
+    },
+    "pairs": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "minItems": 1
+    },
+    "person": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "strength",
+        "favor",
+        "wx_reading",
+        "shishen_reading",
+        "bone_reading",
+        "ming_reading",
+        "dayun_note",
+        "palace_readings",
+        "western_combo",
+        "six_dimensions",
+        "advice_title",
+        "advice",
+        "sketch"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "strength": {
+          "type": "string"
+        },
+        "favor": {
+          "type": "string"
+        },
+        "wx_reading": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/triad"
+          },
+          "minItems": 1
+        },
+        "shishen_reading": {
+          "$ref": "#/$defs/triad"
+        },
+        "bone_reading": {
+          "$ref": "#/$defs/triad"
+        },
+        "ming_reading": {
+          "type": "string"
+        },
+        "extra_patterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dayun_note": {
+          "type": "string"
+        },
+        "palace_readings": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "palace",
+              "question",
+              "triad"
+            ],
+            "properties": {
+              "palace": {
+                "type": "string"
+              },
+              "question": {
+                "type": "string"
+              },
+              "triad": {
+                "$ref": "#/$defs/triad"
+              }
+            }
+          }
+        },
+        "western_combo": {
+          "$ref": "#/$defs/triad"
+        },
+        "wuge_reading": {
+          "$ref": "#/$defs/triad"
+        },
+        "mbti_note": {
+          "type": "string"
+        },
+        "six_dimensions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "career",
+            "wealth",
+            "marriage",
+            "health",
+            "children",
+            "spirit"
+          ],
+          "properties": {
+            "career": {
+              "$ref": "#/$defs/dimension"
+            },
+            "wealth": {
+              "$ref": "#/$defs/dimension"
+            },
+            "marriage": {
+              "$ref": "#/$defs/dimension"
+            },
+            "health": {
+              "$ref": "#/$defs/dimension"
+            },
+            "children": {
+              "$ref": "#/$defs/dimension"
+            },
+            "spirit": {
+              "$ref": "#/$defs/dimension"
+            }
+          }
+        },
+        "weights": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bazi": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "ziwei": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "bone": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "zodiac": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "name": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "mbti": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 50
+            }
+          }
+        },
+        "advice_title": {
+          "type": "string"
+        },
+        "advice": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 3,
+          "maxItems": 8
+        },
+        "sketch": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "core",
+            "fate",
+            "outer",
+            "reconciliation"
+          ],
+          "properties": {
+            "core": {
+              "type": "string",
+              "minLength": 1
+            },
+            "fate": {
+              "type": "string",
+              "minLength": 1
+            },
+            "outer": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reconciliation": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "synastry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "reading",
+        "nourish",
+        "drain",
+        "window",
+        "advice",
+        "reconciliation"
+      ],
+      "properties": {
+        "type": {
+          "const": "synastry"
+        },
+        "score_note": {
+          "type": "string"
+        },
+        "reading": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/triad"
+          },
+          "minItems": 1
+        },
+        "nourish": {
+          "type": "string"
+        },
+        "drain": {
+          "type": "string"
+        },
+        "window": {
+          "type": "string"
+        },
+        "advice": {
+          "$ref": "#/$defs/pairs"
+        },
+        "reconciliation": {
+          "type": "string"
+        }
+      }
+    },
+    "parent_child": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "title",
+        "kid_core",
+        "match",
+        "nourish",
+        "suppress",
+        "advice",
+        "reconciliation"
+      ],
+      "properties": {
+        "type": {
+          "const": "parent_child"
+        },
+        "title": {
+          "type": "string"
+        },
+        "kid_core": {
+          "type": "string"
+        },
+        "match": {
+          "$ref": "#/$defs/pairs"
+        },
+        "nourish": {
+          "type": "string"
+        },
+        "suppress": {
+          "type": "string"
+        },
+        "advice": {
+          "$ref": "#/$defs/pairs"
+        },
+        "reconciliation": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
