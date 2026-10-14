@@ -517,6 +517,12 @@ def render_html(chart: dict, nar: dict, F: list[dict]) -> str:
 
 def render(chart: dict, narrative: dict, as_of_year: int | None = None) -> tuple[str, str]:
     validate(chart, narrative)
+    if any(m.get("birth_time_source") == "assumed" for m in chart["members"]):
+        raise ReportError("假设时刻必须用 editorial，legacy 不可隐藏条件结果标签")
+    if any("six_dimensions" not in p for p in narrative["persons"]):
+        raise ReportError("legacy 格式需要 six_dimensions；不做六维信号分时请用 editorial")
+    if narrative["footer"].get("confidence_pct") is None:
+        raise ReportError("legacy 格式需要 confidence_pct；不作总体百分比时请用 editorial")
     year = as_of_year or datetime.date.today().year
     F = [facts(m, year) for m in chart["members"]]
     return render_md(chart, narrative, F), render_html(chart, narrative, F)
@@ -529,13 +535,24 @@ def main() -> None:
     ap.add_argument("--output-dir", type=Path, default=Path("tianji-output"))
     ap.add_argument("--basename", default="tianji_report")
     ap.add_argument("--as-of-year", type=int, help="计算当前大限所用年份，默认今年")
+    ap.add_argument("--report-style", choices=("editorial", "legacy"), default="editorial")
+    ap.add_argument("--pdf", action="store_true", help="生成同内容 PDF，仅 editorial 支持")
     args = ap.parse_args()
     chart = json.loads(args.chart.read_text(encoding="utf-8"))
     narrative = json.loads(args.narrative.read_text(encoding="utf-8"))
-    md, page = render(chart, narrative, args.as_of_year)
+    if args.report_style == "editorial":
+        from editorial_report import render as render_editorial
+        md, page = render_editorial(chart, narrative, args.as_of_year)
+    else:
+        md, page = render(chart, narrative, args.as_of_year)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / f"{args.basename}.md").write_text(md, encoding="utf-8")
     (args.output_dir / f"{args.basename}.html").write_text(page, encoding="utf-8")
+    if args.pdf:
+        if args.report_style != "editorial":
+            ap.error("--pdf 仅支持 editorial")
+        from editorial_report import write_pdf
+        write_pdf(page, args.output_dir / f"{args.basename}.pdf")
     print(f"[天机] 报告已生成：{args.output_dir / (args.basename + '.md')}、{args.output_dir / (args.basename + '.html')}")
 
 

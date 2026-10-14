@@ -1,0 +1,2 @@
+-r requirements.txt
+weasyprint>=62,<71

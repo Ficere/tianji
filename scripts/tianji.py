@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""天机 v8.4 一站式流水线：输入校验 → 排盘 → reading → HTML；提供 narrative 时输出固定格式报告。"""
+"""天机 v8.5 一站式流水线：输入校验 → 排盘 → reading → HTML；可输出编辑式 Markdown/HTML/PDF。"""
 
 from __future__ import annotations
 
@@ -23,12 +23,22 @@ def run_pipeline(
     scenario: str | None = None,
     narrative_path: Path | None = None,
     as_of_year: int | None = None,
+    report_style: str = "legacy",
+    pdf: bool = False,
 ) -> dict[str, Path]:
     data = json.loads(input_path.read_text(encoding="utf-8"))
     validate_input(data)
 
     members = [analyze_person(member) for member in data["members"]]
     for raw, result in zip(data["members"], members):
+        for key in ("birth_time_source", "birth_time_note"):
+            if key in raw:
+                result[key] = raw[key]
+        if raw.get("birth_time_source") == "assumed":
+            result.setdefault("warnings", []).append({
+                "code": "BIRTH_TIME_ASSUMED",
+                "message": f"用户指定 {raw['birth_time']} 为假设时刻，真实出生时辰未知；{raw['birth_time_note']}",
+            })
         result["clock_alternative"] = clock_alternative(raw, result)
     synastry = analyze_synastry(members) if len(members) > 1 else None
     chart = {
@@ -38,6 +48,11 @@ def run_pipeline(
         "engine_version": ENGINE_VERSION,
     }
     reading = build_reading(chart, title=title, scenario=scenario)
+    assumed = [m for m in members if m.get("birth_time_source") == "assumed"]
+    if assumed:
+        reading["meta"]["notes"] = "；".join(
+            f"{m['name']} {m['birth_time']} 为用户指定假设时刻，实际时辰未知；{m['birth_time_note']}"
+            for m in assumed) + "。完整输出是条件结果，不是已核实的出生盘。"
     report = render_html(reading)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -55,11 +70,25 @@ def run_pipeline(
     paths["report"].write_text(report, encoding="utf-8")
     if narrative_path is not None:
         narrative = json.loads(Path(narrative_path).read_text(encoding="utf-8"))
-        md, page = render_report(chart, narrative, as_of_year)
+        if report_style == "editorial":
+            from editorial_report import render as render_editorial
+            md, page = render_editorial(chart, narrative, as_of_year)
+        elif report_style == "legacy":
+            md, page = render_report(chart, narrative, as_of_year)
+        else:
+            raise ValueError(f"未知 report_style: {report_style}")
         paths["final_md"] = output_dir / "tianji_report.md"
         paths["final_html"] = output_dir / "tianji_report.html"
         paths["final_md"].write_text(md, encoding="utf-8")
         paths["final_html"].write_text(page, encoding="utf-8")
+        if pdf:
+            if report_style != "editorial":
+                raise ValueError("--pdf 仅支持 editorial 格式")
+            from editorial_report import write_pdf
+            paths["final_pdf"] = output_dir / "tianji_report.pdf"
+            write_pdf(page, paths["final_pdf"])
+    elif pdf:
+        raise ValueError("--pdf 需要 --narrative，不可把快速预览当最终报告")
     return paths
 
 
@@ -83,18 +112,22 @@ def clock_alternative(raw: dict, result: dict) -> dict | None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="天机 v8.4 一站式报告生成器")
+    parser = argparse.ArgumentParser(description="天机 v8.5 一站式报告生成器")
     parser.add_argument("--input", required=True, type=Path, help="符合 input_v1 的 JSON")
     parser.add_argument("--output-dir", type=Path, default=Path("tianji-output"))
     parser.add_argument("--title")
     parser.add_argument("--scenario", choices=sorted(SCENARIOS))
     parser.add_argument("--narrative", type=Path, help="Agent 撰写的 narrative_v1 JSON；提供时输出固定格式 tianji_report.md/.html")
     parser.add_argument("--as-of-year", type=int, help="计算当前大限所用年份，默认今年")
+    parser.add_argument("--report-style", choices=("editorial", "legacy"), default="editorial",
+                        help="最终报告格式；CLI 默认 editorial，legacy 保留旧版")
+    parser.add_argument("--pdf", action="store_true", help="同时生成编辑式 PDF（需 requirements-report.txt）")
     args = parser.parse_args()
 
     paths = run_pipeline(
         args.input, args.output_dir, title=args.title, scenario=args.scenario,
         narrative_path=args.narrative, as_of_year=args.as_of_year,
+        report_style=args.report_style, pdf=args.pdf,
     )
     print("[天机] 流水线完成")
     for kind, path in paths.items():

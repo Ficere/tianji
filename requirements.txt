@@ -19,6 +19,10 @@ pytz>=2023.3
 # 非法数据静默进入 HTML 报告。
 jsonschema>=4.20
 
+# 编辑式最终报告：中文 Markdown 表格与安全 HTML；PDF 依赖单列。
+Markdown>=3.5
+bleach>=6.1
+
 # —— 可选 —— #
 # 更高精度的月亮星座计算。缺失时使用内置 Meeus Ch.47 近似算法（±1°）。
 # ephem>=4.1

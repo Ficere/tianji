@@ -1,49 +1,23 @@
 # 固定报告格式
 
-最终交付物固定为同一内容的两份文件：`tianji_report.md`（可复制转发）与 `tianji_report.html`（金墨风格可视化）。两者由 `scripts/render_report.py` 渲染，不手写版面。
+默认最终输出为同内容的 Markdown 与金墨 HTML；用户要求 PDF 时追加同内容 A4 PDF。运行入口 `scripts/tianji.py` 或 `scripts/render_report.py`，CLI 默认 `--report-style editorial`。不得每次手写 HTML、复制真实报告或另做临时 PDF 脚本。
 
-## 分工
+编写任何完整个人或多人报告前读取 [editorial-report.md](editorial-report.md)。准备结婚的伴侣报告额外读取 `templates/editorial-narrative.json` 字段片段；场景由用户确认，不按人数自动改成家庭。
 
-| 来源 | 内容 | 规则 |
-|---|---|---|
-| `chart.json`（脚本） | 四柱、天干/藏干十神、纳音、五行统计、称骨四项与歌诀、紫微十二宫（宫干支、14 主星/辅星分列、空宫借对宫）、四化飞星、格局识别、大限与当前大限、太阳/月亮/上升度数、康熙笔画与五格数理、真太阳时说明与钟表对照、合盘分项与关系矩阵 | 渲染器直接读取，Agent 不复述、不改写 |
-| `narrative.json`（Agent） | 旺衰与喜用的文字表述、三段式解读（优势/风险/行动建议）、六宫解读、大限说明、六维信号分、建议、人格速写、关系章节、置信度表、页脚 | 受 `schemas/narrative_v1.schema.json` 约束 |
+## 事实与叙事
 
-解读必须与 chart 一致：写到的星曜、宫位、干支、分数都要能在 chart 中找到。
+`chart.json` 提供四柱、十神、纳音、藏干、五行、称骨、紫微主辅星与四化、起运与流年、三星度数、姓名数理及合盘评分。`narrative.json` 只负责解读、现实验证、场景协作、置信度说明；不要重复或改写计算事实。
 
-## 章节顺序
+叙事继续符合 `schemas/narrative_v1.schema.json`，每人姓名同序、宫名标准、和解命题使用原契约：
 
-1. 标题、场景与假设（`title`/`scenario`/`assumption`）。
-2. 基本信息：钟表时间、排盘时间（真太阳时·时辰）、农历、出生地、生肖、MBTI。
-3. 时辰说明：经度修正、均时差、距时辰起止分钟数；时辰与钟表时间不同时自动附对照表（时柱、命宫、身宫、称骨）。`time_note` 可补充证件口径等说明。
-4. 置信度表（`confidence`：`[维度, 星级, 主要影响因素]`）。
-5. 合盘总览（仅 HTML 置于个人章节前；Markdown 置于个人章节后）。
-6. 每人一章：四柱 → 五行解读 → 十神 → 称骨 → 紫微（命盘网格、四化、格局、大限、六宫深度解读）→ 西洋星座 → 三才五格（有姓名测算时）→ MBTI 说明 → 六维度倾向（HTML 可拖动权重）→ 建议 → 人格速写与和解命题。
-7. 关系章节：`synastry`（多人合盘）或 `parent_child`（亲子）。
-8. 页脚：置信度百分比、影响因素、校准问题、民俗参考声明。
+「与XX和解——不是YY，而是ZZ。」
 
-## narrative.json 字段
+每人保留旺衰喜用、五行与十神三段式（优势/风险/行动）、称骨三段式、命宫与六宫以上解读、大限说明、三星三段式、建议和内核/阶段/外在/和解速写。姓名或 MBTI 未测时不补造；编辑式可省略 `six_dimensions`，`footer.confidence_pct` 可为 `null`，不输出总体预测准确率。
 
-- `persons[]`：与 `chart.members` 同名同序。
-  - `strength`、`favor`：旺衰与喜用的一句话，须与 `deep.day_master`/`deep.yongshen` 一致。
-  - `wx_reading[]`、`shishen_reading`、`bone_reading`、`western_combo`、`wuge_reading`（无姓名测算时省略）：三段式 `{adv, risk, act}`。
-  - `ming_reading`、`dayun_note`：命宫概述与大限说明；`extra_patterns[]` 可补充 chart 未内置的格局。
-  - `palace_readings[]`：6–12 项 `{palace, question, triad}`，`palace` 用标准宫名（如 `官禄宫`）；星曜标签由渲染器从 chart 生成。
-  - `six_dimensions`：`career/wealth/marriage/health/children/spirit`，每项 `signals` 为 `{bazi|ziwei|bone|zodiac|name|mbti: [0–100 分, 依据]}` 与 `summary`。加权分由渲染器计算；`weights` 可覆盖默认 30/30/15/10/5/10，无 MBTI 或姓名测算时自动剔除对应权重。
-  - `advice_title`、`advice[]`（3–8 条）、`sketch{core, fate, outer, reconciliation}`。
-- `relation`（可选）：
-  - 合盘：`{type:"synastry", score_note?, reading[], nourish, drain, window, advice:[[场景, 建议]], reconciliation}`。
-  - 亲子：`{type:"parent_child", title, kid_core, match:[[维度, 关系]], nourish, suppress, advice:[[场景, 建议]], reconciliation}`。
-- `confidence[]`、`footer{confidence_pct, factors, questions}`；`disclaimer` 省略时使用默认声明。
+新增 `editorial` 字段包含短引句、阶段、协作小节、坐标来源。完整渲染字段与假设时刻标签见 `editorial-report.md`；绝不能只在页脚写时辰未知，却把个人章节和评分当作真实盘。
 
-所有和解命题必须写成「与XX和解——不是YY，而是ZZ。」，否则渲染器拒绝输出。
+## 输出顺序
 
-## 运行
+基础信息与置信度 → 个人命盘 → 场景合盘 → 对应协作指南 → 当前阶段与三年时间线 → 和解命题与校准 → 紫微十二宫附录。不得先堆互动仪表、强制六维评分，或把全部十二宫长表夹在每个人的叙事中。
 
-```bash
-python scripts/tianji.py --input input.json --narrative narrative.json --output-dir tianji-output
-# 或对已有 chart.json 单独渲染
-python scripts/render_report.py --chart tianji-output/chart.json --narrative narrative.json --output-dir tianji-output
-```
-
-完整示例见 `examples/report/example_members.json` 与 `examples/report/example_narrative.json`（虚构人物）。
+用户明确要求旧版六维互动报告时才读 [legacy-report-format.md](legacy-report-format.md)，使用 `--report-style legacy`；旧版不支持假设时刻，以免隐藏输入边界。

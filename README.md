@@ -69,6 +69,19 @@ git clone https://github.com/Ficere/tianji.git
 
 ## 使用 / Usage
 
+### 固定报告与 PDF / Editorial reports
+
+最终报告默认采用金墨编辑式结构：基础信息与置信度 → 个人命盘 → 场景合盘 → 场景协作 → 当前阶段与三年时间线 → 和解命题 → 紫微十二宫附录。准备结婚时增加钱与债务、居住工作、家务照护、双方父母边界、生育亲密、冲突安全及双向沟通，不强制六维倾向分或总体预测置信度百分比。
+
+出生时辰未知时，不会自动填中午。只有用户明确指定假设时刻，才通过 `birth_time_source: "assumed"` 与 `birth_time_note` 生成完整条件报告；相关标签进入正文、表格及 PDF 页眉，得分不代表婚姻成功率。公开仓库只保留通用模板和虚构案例，不存放真实私人合盘。
+
+```bash
+pip install -r requirements-report.txt
+python scripts/tianji.py --input input.json --narrative narrative.json --output-dir out --pdf
+```
+
+输出同内容的 `tianji_report.md/.html/.pdf`。模板与完整运行规则见 [编辑式报告规范](references/editorial-report.md) 与 [叙事字段片段](templates/editorial-narrative.json)；不需要 PDF 时仅安装 `requirements.txt`，省略 `--pdf`。旧版可显式选择 `--report-style legacy`，原 Python API 默认值保留，调用新格式请传 `report_style="editorial"`。
+
 安装后直接用自然语言触发，无需任何配置：
 
 ```
@@ -142,6 +155,7 @@ python scripts/tianji.py \
 
 | 版本 | 要点 |
 |------|------|
+| **v8.5** | 固定编辑式章节与金墨 A4 PDF；用户明确指定的假设时刻进入输入契约、个人/合盘标签与页眉；婚前六项协作模板；可省略六维信号分与总体置信度百分比；保留 legacy API，新增安全渲染与 PDF 回归 |
 | **v8.4** | 时柱、日柱、农历日、称骨与紫微时辰默认按真太阳时，年柱/月柱按出生瞬间；修复中国 1986–1991 年夏令时被忽略；支持 Agent 传入区县级 `birth_lat`/`birth_lon`；新增 `render_report.py` 固定格式 Markdown + HTML 报告；合盘生肖补充辰午酉亥自刑；新增真太阳时独立引擎对照测试 |
 | **v8.3** | 统一输入/输出契约与一站式 CLI；支持 1–8 人报告；修复境外出生时间硬编码 UTC+8 与紫微漏算天马；HTML 全量转义；加入 lunar-python、Swiss Ephemeris、iztro 固定版本交叉验证 |
 | **v8.2** | 深层分析层 `deep`：人元司令藏干十神、刑冲合会、用神喜忌（含流派声明与置信度）、跨系统一致性检测。**纯计算层增强，报告篇幅与 v8.1 持平** |

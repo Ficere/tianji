@@ -1,9 +1,9 @@
 ---
 name: tianji
-description: "天机：传统命理与姓名民俗分析技能。仅当用户明确要求算命、八字、五行、称骨、紫微斗数、太阳/月亮/上升星座、三才五格、姓名测算、命盘或多人命理合盘时使用；支持 1–8 人的真太阳时确定性排盘与固定格式 Markdown/HTML 报告。普通沟通建议、工作安排、亲子或关系咨询若未明确要求命理视角，不应触发此技能。"
+description: "天机：八字、紫微、称骨、星座与姓名民俗分析，支持 1–8 人真太阳时排盘、个人与场景合盘及固定金墨风 Markdown/HTML/PDF 报告。仅用于明确命理请求；普通关系、工作、亲子咨询不触发。"
 metadata:
   author: computer
-  version: '8.4.0'
+  version: '8.5.0'
   language: zh-CN
 ---
 
@@ -33,26 +33,8 @@ metadata:
 
 ## 收集输入
 
-完整排盘对每位成员收集：
-
-- `name`：可用“甲方/乙方”等代号；使用代号时传 `name_is_alias: true`，跳过三才五格。
-- `gender`：男/女，用于传统排盘中的大运方向。
-- `solar_date`：公历 `YYYY-MM-DD`。
-- `birth_time`：出生地当地钟表时间 `HH:MM`（出生证明上的时间），不要自行换算成真太阳时。
-- `birth_city`：出生地名称，尽量精确到区县。
-- `birth_lat` / `birth_lon`：出生地坐标，优先于 `birth_city`。
-- `mbti`：可选，只能作为用户自报的补充信息。
-
-### 出生地坐标与真太阳时
-
-时柱、日柱、农历日、称骨与紫微时辰默认按真太阳时排（`time_basis: "true_solar"`），年柱、月柱按出生瞬间与节气比较，西洋星座按出生瞬间。坐标决定时辰，必须由你解决，不要让用户自己查：
-
-1. 用户给到区县（如“西双版纳州勐海县”）而 `references/city_coords.json` 只有地级市或没有该地时，自行检索该区县政府驻地的经纬度。
-2. 以 `birth_lat`/`birth_lon` 传入，`birth_city` 保留用户原话用于展示；在报告 `time_note` 中写明坐标来源。
-3. 只有用户明确要求按钟表时间排盘时才传 `time_basis: "clock"`。
-4. 出现 `TRUE_SOLAR_UNAVAILABLE` 时不得交付完整报告，先补坐标重算。
-5. 真太阳时距时辰边界不足 15 分钟，或用户提供的时间来源不确定时，在置信度表中降级并说明另一时辰的差异（渲染器会自动附钟表对照表）。
-出生时间未知时，不要猜测中午、子时或其他默认值。说明完整四柱、紫微和上升星座无法可靠生成；请用户补充时间，或改做仅姓名/不依赖时辰的有限分析并清楚标注缺失。
+完整排盘需每人的性别、公历日期、当地钟表出生时间及出生城市；MBTI 可选。收集或补齐输入时读取 [references/input-collection.md](references/input-collection.md)，由你查区县代表坐标并记录来源；默认真太阳时，不让用户查坐标，不自行换算输入出生时间。
+出生时间未知时，不要自行补中午、子时或其他默认值。先补充时间或做有限分析；只有用户明确指定假设时刻，才可做完整条件合盘。此时传 `birth_time_source: "assumed"` 与 `birth_time_note`（记录用户指定及真实时辰未知），不得称为真实出生盘。边界、标签和评分规则见 [references/editorial-report.md](references/editorial-report.md)，出现假设时刻时必读。
 
 多人场景还需确认 `scenario`：`情侣/伴侣`、`亲子`、`职场搭档`、`团队协作`、`管理者与下属`、`朋友`。没有上下文时，2 人默认“朋友”、3 人以上默认“团队协作”，并在结果中说明该假设。
 
@@ -68,13 +50,13 @@ metadata:
 
    依次完成输入校验、确定性计算（`chart.json`）、v8.3 `reading.json` 与快速预览 `report.html`。单人场景省略 `--scenario`。
 2. 读 `chart.json` 的 `pillar_time`、`warnings`、`deep`、`ziwei`，按 [references/report-format.md](references/report-format.md) 写 `narrative.json`。只写解读，不复述或改写事实字段。
-3. 渲染固定格式报告，交付 `tianji_report.md` 与 `tianji_report.html` 两份文件：
+3. 按固定编辑式结构渲染：基础与置信度 → 个人命盘 → 场景合盘 → 协作指南 → 时间线 → 和解命题 → 十二宫附录。准备结婚时，读取 [references/editorial-report.md](references/editorial-report.md) 与 [templates/editorial-narrative.json](templates/editorial-narrative.json)，填写婚前六项讨论与双向沟通，不改成亲子报告。
 
    ```bash
    python scripts/tianji.py --input input.json --narrative narrative.json --output-dir tianji-output
    ```
 
-   渲染器校验姓名顺序、宫名与和解命题格式，失败时修正 narrative 后重跑。
+   默认交付 `tianji_report.md/.html`；用户要求 PDF 时安装 `requirements-report.txt` 并在命令中加 `--pdf`，生成同内容金墨 A4 的 `tianji_report.pdf`。检查中文、表格、假设页眉和分页后交付；具体样式与旧版 `--report-style legacy` 见 [references/editorial-report.md](references/editorial-report.md)。渲染校验失败时修正 narrative 后重跑。
 
 计算模块或排错时再按 [references/calculation-workflow.md](references/calculation-workflow.md) 分步运行。
 
@@ -120,10 +102,11 @@ python scripts/generate_html.py --reading reading.json --output report.html
 
 交付前确认：
 
-- 输入没有被猜测或偷偷补齐。
+- 输入没有被猜测或偷偷补齐；用户指定的假设时刻必须保留来源、醒目标签与限制。
 - 每人 `pillar_time.basis` 为 `true_solar`，坐标来源已在报告中说明。
 - `tianji_report.md` 与 `tianji_report.html` 均由渲染器生成，且解读中提到的干支、星曜、宫位、分数都能在 `chart.json` 中找到。
 - 1–8 人的编号、场景和姓名/代号一致。
 - 页面中姓名、标题、城市等外部文本已转义。
 - 报告包含民俗参考声明和现实验证建议。
+- 编辑式报告不强制六维信号打分或总体置信度百分比；合盘得分不是婚姻成功率，不用于劝婚或劝退。
 - 不声称第三方交叉验证证明命理具有科学预测效度；它只验证计算实现的一致性。

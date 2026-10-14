@@ -1,0 +1,26 @@
+:root{--ink:#202727;--gold:#866633;--paper:#faf8f3;--muted:#69675f}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.75 "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif}
+.report{max-width:940px;margin:auto;padding:30px}.cover{background:#1d2427;color:#f5efe2;padding:56px 44px;border-top:3px solid #b59a65}
+.brand{color:#c8ab71;letter-spacing:.15em;font-size:14px}.cover h1{font:600 38px/1.5 "Noto Serif CJK SC","Songti SC",serif;margin:70px 0 20px}
+.cover p{color:#d3c7af}.cover .notice{color:#f5efe2;border:1px solid #8b7752;padding:14px;margin-top:30px}
+main{background:white;padding:36px 44px}h1,h2{font-family:"Noto Serif CJK SC","Songti SC",serif}
+h1{font-size:27px}h2{font-size:24px;margin:38px 0 14px}h3{font-size:19px;color:var(--gold);margin:28px 0 12px}h4{font-size:16px;margin:22px 0 8px}
+p,li{overflow-wrap:anywhere}blockquote{margin:20px 0;padding:14px 18px;background:#f4f0e6;border-left:3px solid #b59a65;color:#6e5730}
+table{border-collapse:collapse;width:100%;font-size:14px;margin:18px 0}th,td{padding:10px;border:1px solid #d6d7d4;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+th{background:#252d2e;color:white}tr:nth-child(even) td{background:#f7f8f5}a{color:#765825;text-underline-offset:3px}
+li{margin:8px 0}a:focus-visible{outline:2px solid #866633;outline-offset:3px}
+@media(max-width:600px){.report{padding:0}.cover,main{padding:25px 20px}.cover h1{font-size:28px;margin-top:40px}table{font-size:12px}td,th{padding:7px}}
+@page{size:A4;margin:17mm 18mm 18mm 18mm;@top-left{content:"天机 · 场景合盘";font-size:8pt;color:#69675f}@top-right{content:string(assumption);font-size:8pt;color:#69675f}@bottom-right{content:counter(page);font-size:8pt;color:#69675f}}
+@page:first{@top-left{content:""}@top-right{content:""}@bottom-right{content:""}}
+@media print{
+body{background:white;font-size:10.5pt;line-height:1.62}
+.report{padding:0;max-width:none}.cover{min-height:250mm;padding:22mm 16mm;break-after:page;border:0}
+.cover h1{font-size:29pt;margin-top:50mm}.cover .brand{font-size:11pt}.cover p{font-size:11pt}
+.cover .notice{font-size:9.5pt}.assumption-marker{string-set:assumption attr(data-label);height:0;overflow:hidden}
+main{padding:0}h1{font-size:19pt}h2{font-size:17pt;margin:6mm 0 3mm;break-before:page}
+main>h1{margin-top:0}main>h2:first-of-type{break-before:auto}h3{font-size:12pt;margin:5mm 0 2mm}h4{font-size:10.5pt}
+h1,h2,h3,h4{break-after:avoid}p{orphans:3;widows:3;margin:2.7mm 0}li{break-inside:avoid;margin:1.8mm 0}
+table{font-size:9pt;table-layout:fixed;margin:3mm 0;break-inside:avoid}thead{display:table-header-group}tr{break-inside:avoid}td,th{padding:2.1mm 2.3mm}
+.reading-unit{break-inside:avoid}
+blockquote{break-inside:avoid;padding:3mm 4mm}a{color:#765825}
+}

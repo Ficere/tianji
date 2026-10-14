@@ -19,7 +19,7 @@
 |------|------|
 | `meta.scene` | 仅1人填 `"personal"`，合盘填 `"synastry"` |
 | `meta.version` | 固定填 `"8.3"` |
-| `meta.engine_version` | 新生成文件固定填当前引擎版本；v8.3 为 `"8.3.0"` |
+| `meta.engine_version` | 填 `scripts/reading_contract.py` 的 `ENGINE_VERSION`，不把 schema 版本当引擎版本 |
 | `meta.title` | 个人：`"XX的命理报告"`；双人：`"XX × XX 合盘"`；多人：`"N人团队协作合盘"` |
 | `name` | 仅提供真实姓名时填写，否则省略此 key（不填 null）|
 | `birth_city` / `rising_sign` | 无城市信息时省略此 key |
@@ -34,7 +34,7 @@
 | 出生时间精确到分钟 + 提供出生城市 | 5.0 |
 | 精确到时辰 + 提供出生城市 | 4.5 |
 | 精确到时辰，无城市 | 4.0 |
-| 仅知年月日，时辰未知 | 不生成完整四柱/紫微报告；不得猜测默认时刻 |
+| 仅知年月日，时辰未知 | 不生成真实完整盘；用户明确指定假设时刻时可用 `birth_time_source=assumed` 与必填说明生成条件报告，参照 `references/editorial-report.md` |
 | 年月已知，日期不确定 | 2.0 |
 | 仅知出生年份 | 1.0 |
 
